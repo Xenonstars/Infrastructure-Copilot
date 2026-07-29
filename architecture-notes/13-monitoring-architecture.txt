@@ -1,0 +1,14 @@
+Monitoring Architecture
+
+Components
+Azure Monitor
+Infrastructure health
+Application Insights
+Request tracing
+Grafana
+Operational dashboards
+OpenTelemetry
+Distributed tracing
+
+Track
+Plain Text1MTTR Improvement2 3Response Times4 5Token Usage6 7Prompt Failures8 9Retrieval Accuracy10 11Hallucination Incidents12 13RAG Latency14 15User AdoptionShow more lines

@@ -1,0 +1,18 @@
+Business Perspective
+
+Product Position
+Infrastructure Copilot is:
+
+AI-powered Incident & Change Intelligence Platform
+
+Not:
+Monitoring tool
+ITSM platform
+Observability platform
+ChatGPT wrapper
+
+Core Value
+Input:
+Plain Text1Alert2Ticket3Change4Runbook5Logs6KnowledgeShow more lines
+Output:
+Plain Text1Probable Root Cause2Investigation Guidance3Similar Incidents4Change Correlation5Executive Updates6RCA DraftShow more lines

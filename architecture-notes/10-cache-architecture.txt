@@ -1,0 +1,10 @@
+Cache Architecture
+
+Recommendation
+Azure Redis
+
+Used For:
+Plain Text1Session Storage2 3Permission Cache4 5AI Response Cache6 7Tenant Metadata8 9Rate LimitingShow more lines
+
+Benefits
+Plain Text1Reduced Database Load2 3Reduced AI Cost4 5Faster User ExperienceShow more lines

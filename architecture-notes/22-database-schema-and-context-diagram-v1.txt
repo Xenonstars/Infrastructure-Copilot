@@ -1,0 +1,401 @@
+a {
+    text-decoration: none;
+    color: #464feb;
+}
+tr th, tr td {
+    border: 1px solid #e6e6e6;
+}
+tr th {
+    background-color: #f5f5f5;
+}
+Infrastructure Copilot - Database Schema v1.0
+1. Business Perspective
+The database must support the business promise:
+
+Reduce MTTR by connecting incidents, changes, alerts, assets, knowledge, runbooks, AI analysis, and audit history into one intelligence layer.
+
+So the schema is not just “tables.” It must support:
+
+Multi-tenant SaaS billing
+MSP customer separation
+Incident investigation
+Change correlation
+Knowledge ingestion
+RAG citations
+AI auditability
+Security review readiness
+Future cloud/infrastructure connectors
+
+My challenge: do not store everything as JSON because “AI can understand it.” That is lazy architecture. Use relational tables for business-critical operational data, JSONB only for connector-specific payloads and flexible metadata.
+
+2. Technical Architecture
+Database Recommendation
+Primary OLTP Database
+Plain Text1Azure Database for PostgreSQL Flexible ServerShow more lines
+Why:
+
+Strong relational model
+Lower cost than many enterprise databases
+Mature indexing
+JSONB support
+Row-level security support
+Good fit for multitenant SaaS
+
+Azure guidance explicitly identifies Azure Database for PostgreSQL as a good choice for many multitenant deployments and notes row-level security as useful for shared-table tenant isolation. [learn.microsoft.com]
+Search / RAG Store
+Plain Text1Azure AI SearchShow more lines
+Why:
+
+Hybrid search
+Vector search
+Document indexing
+Tenant-aware filtering
+Better enterprise search fit than dumping embeddings directly into app DB
+
+Azure AI Search guidance explains that a search service contains indexes, indexes have schemas, and data is added as documents. It also discusses tenant isolation strategies for multitenant SaaS applications. [learn.microsoft.com]
+Database Pattern
+For MVP:
+Plain Text1Shared Database2Shared Schema3tenant_id on all tenant-owned tables4PostgreSQL Row-Level SecurityShow more lines
+For enterprise tier later:
+Plain Text1Dedicated database per large tenant2or3Dedicated schema per regulated tenantShow more lines
+This hybrid approach keeps MVP cost low but leaves room for enterprise isolation.
+
+3. Security Considerations
+Non-Negotiable Rules
+
+Every tenant-owned table must have tenant_id.
+Every query must be tenant-scoped.
+PostgreSQL RLS must be enabled on sensitive tenant tables.
+Application role must not use database admin credentials.
+AI interactions must be auditable.
+RAG chunks must carry tenant and permission metadata.
+Connector secrets must never be stored directly in PostgreSQL.
+Store only Key Vault reference IDs for secrets.
+
+Azure Database for PostgreSQL access guidance recommends using roles with least privilege and explicitly says not to use the administrator role for the application.  The internal Microsoft-Secure-AI--Technical-Guide-for-Architects references runtime safety, Prompt Shields, logging controls, connector governance, monitoring, audit readiness, and evidence preservation for enterprise AI workloads. [learn.microsoft.com] [Microsoft...Architects | SharePoint]
+
+4. Scalability
+Data Growth Assumptions
+This schema must handle:
+Plain Text1Tenants: 1,000+2Users: 100,000+3Incidents: Millions4Alerts: Tens/Hundreds of millions eventually5Knowledge chunks: Millions6AI interactions: High volume7Audit events: Very high volumeShow more lines
+Partitioning Strategy
+Partition high-volume time-series tables:
+Plain Text1audit_events2ai_interactions3alerts4monitoring_signals5connector_sync_runs6usage_recordsShow more lines
+Partition by:
+Plain Text1created_at monthlyShow more lines
+Use indexes on:
+Plain Text1tenant_id2external_id3status4severity5created_at6resolved_at7source_systemShow more lines
+Azure guidance warns that row-level security can affect performance and recommends performance testing and indexes on tables where RLS is enabled. [learn.microsoft.com]
+
+5. Risks
+Database Risks
+
+RiskWhy It MattersMitigationCross-tenant data leakageCompany-ending SaaS failuretenant_id + RLS + automated testsOverusing JSONBPoor reporting and indexingUse JSONB only for flexible metadataStoring vector data only in PostgresCan become expensive and slow at scaleUse Azure AI Search for RAGAudit table explosionHigh storage costPartition + retention policyConnector payload bloatExternal tools have messy dataNormalize core fields, archive raw payloadAI cost attribution failureCannot bill accuratelyTrack token usage per tenant/user/actionWeak permission modeling for RAGUnauthorized knowledge leakageStore ACL metadata on documents/chunks
+
+6. Recommended Implementation
+Below is the production-grade PostgreSQL schema for Infrastructure Copilot v1.
+Schema Namespaces
+SQL1CREATE SCHEMA core;2CREATE SCHEMA identity;3CREATE SCHEMA ops;4CREATE SCHEMA knowledge;5CREATE SCHEMA ai;6CREATE SCHEMA integration;7CREATE SCHEMA audit;8CREATE SCHEMA billing;Show more lines
+Why schemas?
+
+Cleaner ownership
+Easier migrations
+Better module boundaries
+Aligns with Clean Architecture bounded contexts
+
+6.1 Required Extensions
+SQL1CREATE EXTENSION IF NOT EXISTS "uuid-ossp";2CREATE EXTENSION IF NOT EXISTS pgcrypto;Show more lines
+Optional for low-cost/dev RAG:
+SQL1-- Optional only if using pgvector for dev or low-cost tier2-- CREATE EXTENSION IF NOT EXISTS vector;Show more lines
+Production recommendation: Azure AI Search for RAG, not pgvector as primary RAG store.
+
+6.2 Core Tenant Tables
+SQL1CREATE TABLE core.tenants (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_code VARCHAR(80) NOT NULL UNIQUE,4    name VARCHAR(255) NOT NULL,5    tenant_type VARCHAR(50) NOT NULL DEFAULT 'enterprise',6    plan_code VARCHAR(50) NOT NULL DEFAULT 'starter',7    status VARCHAR(50) NOT NULL DEFAULT 'active',8    primary_region VARCHAR(80) NOT NULL DEFAULT 'eastus',9    data_residency_region VARCHAR(80),10    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),11    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()12);13 14CREATE TABLE core.tenant_settings (15    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),16    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,17    setting_key VARCHAR(150) NOT NULL,18    setting_value JSONB NOT NULL,19    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),20    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),21    UNIQUE (tenant_id, setting_key)22);23 24CREATE INDEX ix_tenant_settings_tenant_id25ON core.tenant_settings (tenant_id);Show more lines
+Decision
+tenant_id is the root isolation boundary. Everything belonging to a customer must link to core.tenants.
+
+6.3 Identity and Access Schema
+SQL1CREATE TABLE identity.users (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    external_identity_id VARCHAR(255),5    email VARCHAR(320) NOT NULL,6    display_name VARCHAR(255) NOT NULL,7    status VARCHAR(50) NOT NULL DEFAULT 'active',8    last_login_at TIMESTAMPTZ,9    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),10    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),11    UNIQUE (tenant_id, email)12);13 14CREATE TABLE identity.roles (15    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),16    tenant_id UUID REFERENCES core.tenants(id) ON DELETE CASCADE,17    name VARCHAR(100) NOT NULL,18    description TEXT,19    is_system_role BOOLEAN NOT NULL DEFAULT false,20    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),21    UNIQUE (tenant_id, name)22);23 24CREATE TABLE identity.permissions (25    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),26    resource VARCHAR(120) NOT NULL,27    action VARCHAR(80) NOT NULL,28    description TEXT,29    UNIQUE (resource, action)30);31 32CREATE TABLE identity.role_permissions (33    role_id UUID NOT NULL REFERENCES identity.roles(id) ON DELETE CASCADE,34    permission_id UUID NOT NULL REFERENCES identity.permissions(id) ON DELETE CASCADE,35    PRIMARY KEY (role_id, permission_id)36);37 38CREATE TABLE identity.user_roles (39    user_id UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,40    role_id UUID NOT NULL REFERENCES identity.roles(id) ON DELETE CASCADE,41    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,42    assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),43    PRIMARY KEY (user_id, role_id)44);45 46CREATE INDEX ix_users_tenant_email47ON identity.users (tenant_id, email);48 49CREATE INDEX ix_user_roles_tenant_user50ON identity.user_roles (tenant_id, user_id);Show more lines
+Decision
+RBAC lives in the app database because Infrastructure Copilot needs product-level roles independent of the customer identity provider.
+
+6.4 Operations: Incident Schema
+SQL1CREATE TABLE ops.incidents (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    external_id VARCHAR(120) NOT NULL,5    source_system VARCHAR(80) NOT NULL,6    title TEXT NOT NULL,7    description TEXT,8    severity VARCHAR(50),9    priority VARCHAR(50),10    status VARCHAR(50) NOT NULL,11    assignment_group VARCHAR(255),12    assigned_to VARCHAR(255),13    business_service_id UUID,14    opened_at TIMESTAMPTZ,15    detected_at TIMESTAMPTZ,16    acknowledged_at TIMESTAMPTZ,17    resolved_at TIMESTAMPTZ,18    closed_at TIMESTAMPTZ,19    business_impact TEXT,20    raw_payload JSONB,21    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),22    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),23    UNIQUE (tenant_id, source_system, external_id)24);25 26CREATE TABLE ops.incident_timeline_events (27    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),28    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,29    incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,30    event_time TIMESTAMPTZ NOT NULL,31    event_type VARCHAR(80) NOT NULL,32    source_system VARCHAR(80),33    description TEXT NOT NULL,34    actor VARCHAR(255),35    raw_payload JSONB,36    created_at TIMESTAMPTZ NOT NULL DEFAULT now()37);38 39CREATE TABLE ops.incident_similarities (40    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),41    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,42    incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,43    similar_incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,44    similarity_score NUMERIC(5,4) NOT NULL,45    similarity_reason TEXT,46    model_version VARCHAR(100),47    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),48    UNIQUE (tenant_id, incident_id, similar_incident_id)49);50 51CREATE TABLE ops.root_cause_analyses (52    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),53    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,54    incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,55    summary TEXT,56    root_cause TEXT,57    corrective_actions TEXT,58    preventive_actions TEXT,59    generated_by_ai BOOLEAN NOT NULL DEFAULT false,60    approved_by_user_id UUID REFERENCES identity.users(id),61    approved_at TIMESTAMPTZ,62    confidence_score NUMERIC(5,4),63    created_at TIMESTAMPTZ NOT NULL DEFAULT now()64);65 66CREATE INDEX ix_incidents_tenant_status67ON ops.incidents (tenant_id, status);68 69CREATE INDEX ix_incidents_tenant_severity70ON ops.incidents (tenant_id, severity);71 72CREATE INDEX ix_incidents_tenant_opened73ON ops.incidents (tenant_id, opened_at DESC);74 75CREATE INDEX ix_incident_timeline_incident_time76ON ops.incident_timeline_events (tenant_id, incident_id, event_time);77 78CREATE INDEX ix_incident_similarities_incident79ON ops.incident_similarities (tenant_id, incident_id, similarity_score DESC);Show more lines
+Decision
+raw_payload keeps original ServiceNow/Jira payloads, but the operational fields are normalized. This gives both flexibility and reporting performance.
+
+6.5 Operations: Change Schema
+SQL1CREATE TABLE ops.changes (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    external_id VARCHAR(120) NOT NULL,5    source_system VARCHAR(80) NOT NULL,6    title TEXT NOT NULL,7    description TEXT,8    change_type VARCHAR(80),9    risk_level VARCHAR(50),10    status VARCHAR(50) NOT NULL,11    assignment_group VARCHAR(255),12    requested_by VARCHAR(255),13    planned_start_at TIMESTAMPTZ,14    planned_end_at TIMESTAMPTZ,15    actual_start_at TIMESTAMPTZ,16    actual_end_at TIMESTAMPTZ,17    implementation_plan TEXT,18    rollback_plan TEXT,19    test_plan TEXT,20    raw_payload JSONB,21    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),22    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),23    UNIQUE (tenant_id, source_system, external_id)24);25 26CREATE TABLE ops.change_risk_assessments (27    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),28    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,29    change_id UUID NOT NULL REFERENCES ops.changes(id) ON DELETE CASCADE,30    risk_score NUMERIC(5,2) NOT NULL,31    blast_radius TEXT,32    risk_factors JSONB,33    recommendation TEXT,34    generated_by_ai BOOLEAN NOT NULL DEFAULT true,35    confidence_score NUMERIC(5,4),36    created_at TIMESTAMPTZ NOT NULL DEFAULT now()37);38 39CREATE TABLE ops.change_incident_correlations (40    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),41    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,42    change_id UUID NOT NULL REFERENCES ops.changes(id) ON DELETE CASCADE,43    incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,44    confidence_score NUMERIC(5,4) NOT NULL,45    correlation_reason TEXT,46    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),47    UNIQUE (tenant_id, change_id, incident_id)48);49 50CREATE INDEX ix_changes_tenant_window51ON ops.changes (tenant_id, planned_start_at, planned_end_at);52 53CREATE INDEX ix_changes_tenant_status54ON ops.changes (tenant_id, status);55 56CREATE INDEX ix_change_incident_correlation57ON ops.change_incident_correlations (tenant_id, incident_id, confidence_score DESC);Show more lines
+Decision
+Change-to-incident correlation is a first-class table because this is one of the product’s strongest MTTR reducers.
+
+6.6 Configuration Management Schema
+SQL1CREATE TABLE ops.services (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    name VARCHAR(255) NOT NULL,5    description TEXT,6    business_owner VARCHAR(255),7    technical_owner VARCHAR(255),8    tier VARCHAR(50),9    criticality VARCHAR(50),10    status VARCHAR(50) NOT NULL DEFAULT 'active',11    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),12    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),13    UNIQUE (tenant_id, name)14);15 16CREATE TABLE ops.assets (17    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),18    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,19    external_id VARCHAR(120),20    source_system VARCHAR(80),21    name VARCHAR(255) NOT NULL,22    asset_type VARCHAR(80) NOT NULL,23    environment VARCHAR(80),24    platform VARCHAR(80),25    region VARCHAR(120),26    owner VARCHAR(255),27    criticality VARCHAR(50),28    status VARCHAR(50) NOT NULL DEFAULT 'active',29    metadata JSONB,30    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),31    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),32    UNIQUE (tenant_id, source_system, external_id)33);34 35CREATE TABLE ops.service_assets (36    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,37    service_id UUID NOT NULL REFERENCES ops.services(id) ON DELETE CASCADE,38    asset_id UUID NOT NULL REFERENCES ops.assets(id) ON DELETE CASCADE,39    relationship_type VARCHAR(80) NOT NULL DEFAULT 'depends_on',40    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),41    PRIMARY KEY (tenant_id, service_id, asset_id)42);43 44CREATE TABLE ops.service_dependencies (45    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,46    parent_service_id UUID NOT NULL REFERENCES ops.services(id) ON DELETE CASCADE,47    child_service_id UUID NOT NULL REFERENCES ops.services(id) ON DELETE CASCADE,48    dependency_type VARCHAR(80),49    criticality VARCHAR(50),50    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),51    PRIMARY KEY (tenant_id, parent_service_id, child_service_id)52);53 54ALTER TABLE ops.incidents55ADD CONSTRAINT fk_incident_business_service56FOREIGN KEY (business_service_id)57REFERENCES ops.services(id);58 59CREATE INDEX ix_assets_tenant_type60ON ops.assets (tenant_id, asset_type);61 62CREATE INDEX ix_services_tenant_criticality63ON ops.services (tenant_id, criticality);Show more lines
+Decision
+Services and assets are separated because business services are not the same as infrastructure assets. A checkout service can depend on many servers, APIs, queues, and databases.
+
+6.7 Alert and Monitoring Schema
+SQL1CREATE TABLE ops.alerts (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    external_id VARCHAR(120),5    source_system VARCHAR(80) NOT NULL,6    title TEXT NOT NULL,7    message TEXT,8    severity VARCHAR(50),9    status VARCHAR(50) NOT NULL DEFAULT 'open',10    asset_id UUID REFERENCES ops.assets(id),11    service_id UUID REFERENCES ops.services(id),12    detected_at TIMESTAMPTZ NOT NULL,13    resolved_at TIMESTAMPTZ,14    raw_payload JSONB,15    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),16    UNIQUE (tenant_id, source_system, external_id)17);18 19CREATE TABLE ops.incident_alerts (20    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,21    incident_id UUID NOT NULL REFERENCES ops.incidents(id) ON DELETE CASCADE,22    alert_id UUID NOT NULL REFERENCES ops.alerts(id) ON DELETE CASCADE,23    confidence_score NUMERIC(5,4),24    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),25    PRIMARY KEY (tenant_id, incident_id, alert_id)26);27 28CREATE TABLE ops.monitoring_signals (29    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),30    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,31    source_system VARCHAR(80) NOT NULL,32    asset_id UUID REFERENCES ops.assets(id),33    service_id UUID REFERENCES ops.services(id),34    metric_name VARCHAR(255) NOT NULL,35    metric_value NUMERIC,36    metric_unit VARCHAR(50),37    captured_at TIMESTAMPTZ NOT NULL,38    metadata JSONB,39    created_at TIMESTAMPTZ NOT NULL DEFAULT now()40);41 42CREATE INDEX ix_alerts_tenant_detected43ON ops.alerts (tenant_id, detected_at DESC);44 45CREATE INDEX ix_alerts_tenant_status46ON ops.alerts (tenant_id, status);47 48CREATE INDEX ix_monitoring_signals_tenant_metric_time49ON ops.monitoring_signals (tenant_id, metric_name, captured_at DESC);Show more lines
+Decision
+Alerts are stored in PostgreSQL for correlation and investigation history. Raw high-volume metrics should eventually move to a time-series/observability platform, not PostgreSQL forever.
+
+6.8 Knowledge and RAG Metadata Schema
+SQL1CREATE TABLE knowledge.knowledge_sources (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    source_type VARCHAR(80) NOT NULL,5    name VARCHAR(255) NOT NULL,6    integration_id UUID,7    status VARCHAR(50) NOT NULL DEFAULT 'active',8    sync_enabled BOOLEAN NOT NULL DEFAULT true,9    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),10    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()11);12 13CREATE TABLE knowledge.documents (14    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),15    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,16    source_id UUID NOT NULL REFERENCES knowledge.knowledge_sources(id) ON DELETE CASCADE,17    external_id VARCHAR(255),18    title TEXT NOT NULL,19    document_type VARCHAR(80),20    category VARCHAR(120),21    owner VARCHAR(255),22    content_hash VARCHAR(128),23    storage_uri TEXT,24    access_scope VARCHAR(80) NOT NULL DEFAULT 'tenant',25    acl_metadata JSONB,26    status VARCHAR(50) NOT NULL DEFAULT 'active',27    last_indexed_at TIMESTAMPTZ,28    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),29    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()30,    UNIQUE (tenant_id, source_id, external_id)31);32 33CREATE TABLE knowledge.document_chunks (34    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),35    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,36    document_id UUID NOT NULL REFERENCES knowledge.documents(id) ON DELETE CASCADE,37    chunk_number INTEGER NOT NULL,38    chunk_text TEXT NOT NULL,39    token_count INTEGER,40    content_hash VARCHAR(128),41    azure_ai_search_index VARCHAR(255),42    azure_ai_search_document_id VARCHAR(255),43    embedding_model VARCHAR(120),44    metadata JSONB,45    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),46    UNIQUE (tenant_id, document_id, chunk_number)47);48 49CREATE TABLE knowledge.runbooks (50    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),51    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,52    document_id UUID REFERENCES knowledge.documents(id),53    title TEXT NOT NULL,54    technical_area VARCHAR(120),55    version VARCHAR(50),56    status VARCHAR(50) NOT NULL DEFAULT 'active',57    approval_status VARCHAR(50) DEFAULT 'draft',58    owner VARCHAR(255),59    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),60    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()61);62 63CREATE TABLE knowledge.runbook_steps (64    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),65    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,66    runbook_id UUID NOT NULL REFERENCES knowledge.runbooks(id) ON DELETE CASCADE,67    step_number INTEGER NOT NULL,68    instruction TEXT NOT NULL,69    expected_result TEXT,70    rollback_instruction TEXT,71    requires_approval BOOLEAN NOT NULL DEFAULT false,72    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),73    UNIQUE (tenant_id, runbook_id, step_number)74);75 76CREATE INDEX ix_documents_tenant_source77ON knowledge.documents (tenant_id, source_id);78 79CREATE INDEX ix_document_chunks_tenant_document80ON knowledge.document_chunks (tenant_id, document_id);81 82CREATE INDEX ix_runbooks_tenant_area83ON knowledge.runbooks (tenant_id, technical_area);Show more lines
+Decision
+PostgreSQL stores document metadata and chunk metadata. Azure AI Search stores the searchable/indexed chunk representation. This avoids turning PostgreSQL into a search engine.
+Microsoft RAG guidance says the pipeline should ingest media, chunk it, enrich metadata, embed chunks, and store them in a search index.  Azure AI Search guidance explains that indexes contain documents and fields, which matches our document_chunks to search-document mapping. [learn.microsoft.com] [learn.microsoft.com]
+
+6.9 AI Intelligence Schema
+SQL1CREATE TABLE ai.ai_conversations (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    user_id UUID REFERENCES identity.users(id),5    title TEXT,6    entity_type VARCHAR(80),7    entity_id UUID,8    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),9    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()10);11 12CREATE TABLE ai.ai_interactions (13    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),14    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,15    conversation_id UUID REFERENCES ai.ai_conversations(id) ON DELETE CASCADE,16    user_id UUID REFERENCES identity.users(id),17    interaction_type VARCHAR(80) NOT NULL,18    prompt TEXT NOT NULL,19    response TEXT,20    model_provider VARCHAR(80),21    model_name VARCHAR(120),22    prompt_tokens INTEGER DEFAULT 0,23    completion_tokens INTEGER DEFAULT 0,24    total_tokens INTEGER DEFAULT 0,25    estimated_cost_usd NUMERIC(12,6) DEFAULT 0,26    latency_ms INTEGER,27    confidence_score NUMERIC(5,4),28    safety_status VARCHAR(80),29    created_at TIMESTAMPTZ NOT NULL DEFAULT now()30);31 32CREATE TABLE ai.ai_citations (33    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),34    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,35    interaction_id UUID NOT NULL REFERENCES ai.ai_interactions(id) ON DELETE CASCADE,36    source_type VARCHAR(80) NOT NULL,37    source_id UUID,38    source_external_id VARCHAR(255),39    title TEXT,40    excerpt TEXT,41    relevance_score NUMERIC(5,4),42    created_at TIMESTAMPTZ NOT NULL DEFAULT now()43);44 45CREATE TABLE ai.ai_analyses (46    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),47    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,48    entity_type VARCHAR(80) NOT NULL,49    entity_id UUID NOT NULL,50    analysis_type VARCHAR(80) NOT NULL,51    result JSONB NOT NULL,52    summary TEXT,53    confidence_score NUMERIC(5,4),54    model_name VARCHAR(120),55    created_by_interaction_id UUID REFERENCES ai.ai_interactions(id),56    created_at TIMESTAMPTZ NOT NULL DEFAULT now()57);58 59CREATE TABLE ai.ai_recommendations (60    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),61    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,62    analysis_id UUID NOT NULL REFERENCES ai.ai_analyses(id) ON DELETE CASCADE,63    recommendation_type VARCHAR(80) NOT NULL,64    recommendation TEXT NOT NULL,65    priority VARCHAR(50),66    explanation TEXT,67    status VARCHAR(50) NOT NULL DEFAULT 'proposed',68    created_at TIMESTAMPTZ NOT NULL DEFAULT now()69);70 71CREATE INDEX ix_ai_interactions_tenant_user_time72ON ai.ai_interactions (tenant_id, user_id, created_at DESC);73 74CREATE INDEX ix_ai_interactions_tenant_type_time75ON ai.ai_interactions (tenant_id, interaction_type, created_at DESC);76 77CREATE INDEX ix_ai_citations_interaction78ON ai.ai_citations (tenant_id, interaction_id);79 80CREATE INDEX ix_ai_analyses_entity81ON ai.ai_analyses (tenant_id, entity_type, entity_id);Show more lines
+Decision
+AI outputs must be stored separately from source data. Do not overwrite operational truth with AI-generated guesses. AI analysis is evidence, not fact.
+The internal Microsoft-Secure-AI--Technical-Guide-for-Architects references maintaining evidence for AI activity, administrative changes, policy enforcement, and investigation outcomes. [Microsoft...Architects | SharePoint]
+
+6.10 Integration Schema
+SQL1CREATE TABLE integration.integrations (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    integration_type VARCHAR(80) NOT NULL,5    name VARCHAR(255) NOT NULL,6    status VARCHAR(50) NOT NULL DEFAULT 'active',7    base_url TEXT,8    auth_type VARCHAR(80),9    secret_reference TEXT,10    config JSONB,11    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),12    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),13    UNIQUE (tenant_id, integration_type, name)14);15 16CREATE TABLE integration.connector_sync_runs (17    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),18    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,19    integration_id UUID NOT NULL REFERENCES integration.integrations(id) ON DELETE CASCADE,20    sync_type VARCHAR(80) NOT NULL,21    status VARCHAR(50) NOT NULL,22    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),23    completed_at TIMESTAMPTZ,24    records_read INTEGER DEFAULT 0,25    records_created INTEGER DEFAULT 0,26    records_updated INTEGER DEFAULT 0,27    records_failed INTEGER DEFAULT 0,28    error_message TEXT,29    metadata JSONB30);31 32CREATE TABLE integration.external_object_mappings (33    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),34    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,35    integration_id UUID NOT NULL REFERENCES integration.integrations(id) ON DELETE CASCADE,36    external_object_type VARCHAR(80) NOT NULL,37    external_object_id VARCHAR(255) NOT NULL,38    internal_entity_type VARCHAR(80) NOT NULL,39    internal_entity_id UUID NOT NULL,40    last_synced_at TIMESTAMPTZ,41    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),42    UNIQUE (tenant_id, integration_id, external_object_type, external_object_id)43);44 45CREATE INDEX ix_integrations_tenant_type46ON integration.integrations (tenant_id, integration_type);47 48CREATE INDEX ix_sync_runs_tenant_integration_time49ON integration.connector_sync_runs (tenant_id, integration_id, started_at DESC);50 51CREATE INDEX ix_external_mapping_lookup52ON integration.external_object_mappings (53    tenant_id,54    integration_id,55    external_object_type,56    external_object_id57);Show more lines
+Decision
+Store only secret_reference, not secrets. Actual secrets live in Azure Key Vault.
+
+6.11 Audit and Governance Schema
+SQL1CREATE TABLE audit.audit_events (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID REFERENCES core.tenants(id) ON DELETE CASCADE,4    user_id UUID REFERENCES identity.users(id),5    action VARCHAR(120) NOT NULL,6    resource_type VARCHAR(120),7    resource_id UUID,8    ip_address INET,9    user_agent TEXT,10    request_id VARCHAR(120),11    before_value JSONB,12    after_value JSONB,13    created_at TIMESTAMPTZ NOT NULL DEFAULT now()14);15 16CREATE TABLE audit.security_events (17    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),18    tenant_id UUID REFERENCES core.tenants(id) ON DELETE CASCADE,19    user_id UUID REFERENCES identity.users(id),20    event_type VARCHAR(120) NOT NULL,21    severity VARCHAR(50) NOT NULL,22    description TEXT,23    metadata JSONB,24    created_at TIMESTAMPTZ NOT NULL DEFAULT now()25);26 27CREATE TABLE audit.ai_safety_events (28    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),29    tenant_id UUID REFERENCES core.tenants(id) ON DELETE CASCADE,30    interaction_id UUID REFERENCES ai.ai_interactions(id),31    event_type VARCHAR(120) NOT NULL,32    severity VARCHAR(50) NOT NULL,33    prompt_excerpt TEXT,34    response_excerpt TEXT,35    policy_result JSONB,36    created_at TIMESTAMPTZ NOT NULL DEFAULT now()37);38 39CREATE INDEX ix_audit_events_tenant_time40ON audit.audit_events (tenant_id, created_at DESC);41 42CREATE INDEX ix_security_events_tenant_time43ON audit.security_events (tenant_id, created_at DESC);44 45CREATE INDEX ix_ai_safety_events_tenant_time46ON audit.ai_safety_events (tenant_id, created_at DESC);Show more lines
+Decision
+Separate audit_events, security_events, and ai_safety_events. Security teams will love this. Developers will complain. Security wins.
+
+6.12 Billing and Usage Schema
+SQL1CREATE TABLE billing.subscriptions (2    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),3    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,4    plan_code VARCHAR(80) NOT NULL,5    status VARCHAR(50) NOT NULL DEFAULT 'active',6    billing_cycle VARCHAR(50) NOT NULL DEFAULT 'monthly',7    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),8    renews_at TIMESTAMPTZ,9    cancelled_at TIMESTAMPTZ10);11 12CREATE TABLE billing.usage_records (13    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),14    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,15    user_id UUID REFERENCES identity.users(id),16    metric_type VARCHAR(100) NOT NULL,17    quantity NUMERIC(18,4) NOT NULL,18    unit VARCHAR(50) NOT NULL,19    source VARCHAR(80),20    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),21    metadata JSONB22);23 24CREATE TABLE billing.tenant_quotas (25    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),26    tenant_id UUID NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,27    quota_type VARCHAR(100) NOT NULL,28    limit_value NUMERIC(18,4) NOT NULL,29    period VARCHAR(50) NOT NULL,30    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),31    UNIQUE (tenant_id, quota_type, period)32);33 34CREATE INDEX ix_usage_records_tenant_metric_time35ON billing.usage_records (tenant_id, metric_type, recorded_at DESC);Show more lines
+Decision
+AI usage must be billable from day one. Token usage, indexing volume, number of users, and connector volume should all be tracked.
+
+6.13 Row-Level Security Strategy
+Enable RLS
+Example for incidents:
+SQL1ALTER TABLE ops.incidents ENABLE ROW LEVEL SECURITY;2 3CREATE POLICY tenant_isolation_incidents4ON ops.incidents5USING (tenant_id = current_setting('app.current_tenant_id')::uuid)6WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::uuid);Show more lines
+Apply the same pattern to all tenant-owned tables:
+Plain Text1identity.users2ops.incidents3ops.changes4ops.assets5ops.services6ops.alerts7knowledge.documents8knowledge.document_chunks9ai.ai_interactions10integration.integrations11audit.audit_events12billing.usage_recordsShow more lines
+App Request Flow
+Plain Text1API receives JWT2↓3Resolve tenant_id4↓5Open DB connection6↓7SET app.current_tenant_id = '<tenant-id>'8↓9Execute query10↓11PostgreSQL enforces RLSShow more lines
+Azure Database for PostgreSQL guidance states row-level security can restrict row access by tenant when using shared tables, and Azure access guidance recommends least-privilege roles. [learn.microsoft.com], [learn.microsoft.com]
+
+6.14 Retention Policy
+
+TableRetentionincidents7 years configurablechanges7 years configurableRCA7 years configurableaudit_events1-7 years based on planai_interactions90 days to 2 years based on planai_safety_events1-7 yearsmonitoring_signals30-180 daysconnector_sync_runs180 daysusage_records7 years
+This is my product recommendation, not something directly stated in the sources. The reason is enterprise customers will ask for audit, compliance, and billing history, while AI chat history should have stricter retention to reduce privacy and cost exposure.
+
+6.15 Azure AI Search Index Mapping
+PostgreSQL table:
+Plain Text1knowledge.document_chunksShow more lines
+Maps to Azure AI Search document:
+JSON1{2  "id": "chunk_id",3  "tenant_id": "tenant_id",4  "document_id": "document_id",5  "title": "document_title",6  "chunk_text": "chunk_text",7  "source_type": "service_now_kb",8  "category": "network",9  "acl_groups": ["sre", "network-team"],10  "acl_users": ["user-id-1"],11  "embedding_vector": []12}Show more lines
+Important
+RAG must filter by:
+Plain Text1tenant_id2user permissions3document ACL4source access rightsShow more lines
+Microsoft secure multitenant RAG guidance states users in multitenant scenarios must only use grounding data they are authorized to access.  Azure AI Search guidance says multitenant applications require tenant isolation strategies so tenants cannot see or share another tenant’s data. [learn.microsoft.com] [learn.microsoft.com]
+
+6.16 Physical ERD Summary
+Plain Text1core.tenants2 ├── identity.users3 ├── identity.roles4 ├── ops.incidents5 │    ├── ops.incident_timeline_events6 │    ├── ops.incident_similarities7 │    ├── ops.root_cause_analyses8 │    └── ops.incident_alerts9 │10 ├── ops.changes11 │    ├── ops.change_risk_assessments12 │    └── ops.change_incident_correlations13 │14 ├── ops.services15 │    ├── ops.service_dependencies16 │    └── ops.service_assets17 │18 ├── ops.assets19 ├── ops.alerts20 ├── ops.monitoring_signals21 │22 ├── knowledge.knowledge_sources23 │    └── knowledge.documents24 │         └── knowledge.document_chunks25 │26 ├── ai.ai_conversations27 │    └── ai.ai_interactions28 │         └── ai.ai_citations29 │30 ├── integration.integrations31 │    └── integration.connector_sync_runs32 │33 ├── audit.audit_events34 └── billing.subscriptionsShow more lines
+
+7. Future Improvements
+Phase 2 Schema Enhancements
+Add:
+Plain Text1problem_management2known_errors3sla_policies4on_call_schedules5maintenance_windows6service_level_objectives7error_budgetsShow more lines
+Phase 3 AIOps Enhancements
+Add:
+Plain Text1event_clusters2anomaly_detections3root_cause_candidates4dependency_graph_snapshots5blast_radius_snapshotsShow more lines
+Phase 4 Enterprise Isolation
+Add:
+Plain Text1tenant_database_routes2tenant_data_residency_policies3dedicated_search_indexes4customer_managed_key_referencesShow more lines
+Phase 5 Controlled Remediation
+Add:
+Plain Text1automation_actions2approval_workflows3runbook_executions4rollback_executions5human_approval_recordsShow more lines
+
+Final Recommendation
+Build v1 using:
+Plain Text1Azure Database for PostgreSQL Flexible Server2Shared schema3tenant_id everywhere4PostgreSQL RLS5Azure AI Search for RAG6Blob Storage for original documents7Key Vault for secrets8Partitioned audit and AI usage tablesShow more lines
+This is the correct balance for your goal:
+
+Enterprise secure
+Low cost
+Multi-tenant
+AI-ready
+Production-ready
+Scalable without pretending we are Microsoft on day one
+
+Database Schema above
+
+
+a {
+    text-decoration: none;
+    color: #464feb;
+}
+tr th, tr td {
+    border: 1px solid #e6e6e6;
+}
+tr th {
+    background-color: #f5f5f5;
+}
+C4 Level 1 - System Context Diagram
+Infrastructure Copilot
+This is the highest-level architecture view.
+The purpose of the Context Diagram is to answer:
+
+What is Infrastructure Copilot?
+Who uses it?
+Which external systems interact with it?
+
+Recent enterprise AI architecture references consistently emphasize that production AI systems must operate within a broader ecosystem of identity, governance, knowledge, integrations, observability, and enterprise systems rather than acting as isolated chatbots. [How Micros...run thous | Viva Engage], [Microsoft...Architects | SharePoint], [Cognizant®...for Jul22 | PowerPoint]
+
+1. Business Perspective
+Infrastructure Copilot is an:
+
+AI-powered Incident & Change Intelligence Platform
+
+Its role is to sit above existing enterprise systems and help engineers reduce MTTR by correlating:
+
+Incidents
+Changes
+Assets
+Alerts
+Runbooks
+Knowledge Articles
+Monitoring Data
+
+It does not replace:
+
+ServiceNow
+Jira
+Datadog
+Dynatrace
+Azure Monitor
+Splunk
+
+Instead it becomes the:
+
+between users and infrastructure data.
+
+2. System Context Diagram
+Plain Text1┌───────────────────────────────────────────────┐2│            ENTERPRISE USERS                   │3├───────────────────────────────────────────────┤4│                                               │5│ Major Incident Managers                       │6│ Infrastructure Engineers                      │7│ SRE Teams                                     │8│ DevOps Engineers                              │9│ Service Desk                                  │10│ Operations Managers                           │11│ MSP Operators                                 │12│                                               │13└──────────────────┬────────────────────────────┘14                   │15                   │ Uses16                   ▼17 18        ┌──────────────────────┐19        │ Infrastructure       │20        │ Copilot              │21        │                      │22        │ AI Incident & Change │23        │ Intelligence         │24        └───────┬──────────────┘25 26─────────────────────────────────────────────────────27                DATA SOURCES28─────────────────────────────────────────────────────29 30    ┌─────────────────┐31    │ ServiceNow      │32    └─────┬───────────┘33          │ Incidents34          │ Changes35          │ CMDB36          ▼37 38    ┌─────────────────┐39    │ Jira            │40    └─────┬───────────┘41          │ Tickets42          ▼43 44    ┌─────────────────┐45    │ Confluence      │46    └─────┬───────────┘47          │ KB48          ▼49 50    ┌─────────────────┐51    │ SharePoint      │52    └─────┬───────────┘53          │ Docs54          ▼55 56 57─────────────────────────────────────────────────────58             OBSERVABILITY SYSTEMS59─────────────────────────────────────────────────────60 61    Azure Monitor62    Datadog63    Dynatrace64    Splunk65    Elastic66 67          │68          ▼69 70  Alerts71  Metrics72  Logs73  Events74 75─────────────────────────────────────────────────────76            CLOUD & INFRASTRUCTURE77─────────────────────────────────────────────────────78 79 ┌────────┐80 │ Azure  │81 └──┬─────┘82    │83 84 ┌────────┐85 │ AWS    │86 └──┬─────┘87    │88 89 ┌────────┐90 │ GCP    │91 └──┬─────┘92    │93 94 ┌────────────┐95 │ Kubernetes │96 └────┬───────┘97      │98 99 ┌────────┐100 │ VMware │101 └────────┘102 103─────────────────────────────────────────────────────104             COLLABORATION TOOLS105─────────────────────────────────────────────────────106 107 Microsoft Teams108 109 Slack110 111 Email Systems112 113─────────────────────────────────────────────────────114            IDENTITY PROVIDERS115─────────────────────────────────────────────────────116 117 Microsoft Entra ID118 119 Okta120 121 Ping Identity122 123 OneLogin124 125─────────────────────────────────────────────────────126                AI PLATFORM127─────────────────────────────────────────────────────128 129 Azure OpenAI130 131 Azure AI Search132 133 Embedding Models134 135─────────────────────────────────────────────────────Show more lines
+
+3. External Actors
+Primary Actor
+Major Incident Manager
+Goals:
+Plain Text1Find probable root cause2 3View recent changes4 5Generate executive updates6 7Generate RCA draftsShow more lines
+Business Value:
+Plain Text1Reduced outage durationShow more lines
+
+Infrastructure Engineer
+Goals:
+Plain Text1Troubleshoot faster2 3Locate runbooks4 5Find similar incidentsShow more lines
+Business Value:
+Plain Text1Reduced investigation effortShow more lines
+
+SRE Team
+Goals:
+Plain Text1Understand service dependencies2 3Improve reliability4 5Reduce recurring incidentsShow more lines
+Business Value:
+Plain Text1Reduced error budget consumptionShow more lines
+
+MSP Operations Team
+Goals:
+Plain Text1Handle multiple customers2 3Improve standardizationShow more lines
+Business Value:
+Plain Text1Higher engineer productivityShow more lines
+
+4. External Systems
+ServiceNow
+Provides:
+Plain Text1Incidents2 3Changes4 5Problems6 7CMDB8 9Knowledge ArticlesShow more lines
+Infrastructure Copilot consumes this data and generates intelligence.
+
+Jira
+Provides:
+Plain Text1Tickets2 3Tasks4 5Stories6 7DefectsShow more lines
+Used for engineering correlation.
+
+Confluence / SharePoint
+Provides:
+Plain Text1Runbooks2 3SOPs4 5Knowledge BaseShow more lines
+These become RAG sources.
+The RAG architecture guidance specifically describes grounding AI responses on enterprise documents and knowledge through retrieval and orchestration workflows. [Model Cont...tegrations | SharePoint], [How Micros...run thous | Viva Engage]
+
+5. Monitoring Platforms
+Possible integrations:
+Plain Text1Azure Monitor2 3Datadog4 5Dynatrace6 7Splunk8 9ElasticShow more lines
+Provide:
+Plain Text1Logs2 3Metrics4 5Alerts6 7EventsShow more lines
+Used for:
+Plain Text1Incident Correlation2 3Root Cause Analysis4 5Pattern DetectionShow more lines
+
+6. Cloud Providers
+Infrastructure Copilot eventually supports:
+Azure
+Plain Text1Resources2 3VMs4 5AKS6 7NetworkingShow more lines
+AWS
+Plain Text1EC22 3EKS4 5CloudWatchShow more lines
+GCP
+Plain Text1GKE2 3Operations SuiteShow more lines
+Purpose:
+Plain Text1Cloud context for investigationsShow more lines
+
+7. Collaboration Platforms
+Microsoft Teams
+Capabilities:
+Plain Text1Incident notifications2 3War room creation4 5Executive updatesShow more lines
+
+Slack
+Capabilities:
+Plain Text1Alerts2 3Approvals4 5CollaborationShow more lines
+
+8. Identity Providers
+Infrastructure Copilot never owns enterprise credentials.
+Authentication delegated to:
+Plain Text1Microsoft Entra ID2 3Okta4 5SAML ProvidersShow more lines
+This aligns with enterprise AI architecture and secure AI guidance emphasizing identity governance, trusted identities, access boundaries, and authorization controls. [Microsoft...Architects | SharePoint], [How Micros...run thous | Viva Engage]
+
+9. AI Ecosystem
+Azure OpenAI
+Responsibilities:
+Plain Text1Reasoning2 3Summarization4 5Root Cause Analysis6 7ChatShow more lines
+
+Azure AI Search
+Responsibilities:
+Plain Text1Knowledge Retrieval2 3Hybrid Search4 5Vector Search6 7RAGShow more lines
+
+Embedding Models
+Responsibilities:
+Plain Text1Document Vectorization2 3Similarity Search4 5Knowledge RetrievalShow more lines
+
+10. Context-Level Use Cases
+Incident Investigation
+Plain Text1Engineer2   ↓3Infrastructure Copilot4   ↓5ServiceNow Incident6   ↓7Related Changes8   ↓9Runbooks10   ↓11Monitoring Alerts12   ↓13Root Cause RecommendationShow more lines
+
+Executive Update
+Plain Text1Major Incident Manager2      ↓3Infrastructure Copilot4      ↓5Incident Data6      ↓7Timeline8      ↓9Executive SummaryShow more lines
+
+Similar Incident Search
+Plain Text1Engineer2      ↓3Infrastructure Copilot4      ↓5RAG Search6      ↓7Historical Incidents8      ↓9Known FixShow more lines
+
+11. Context Diagram Boundaries
+Inside Infrastructure Copilot
+✅ Incident Intelligence
+✅ Change Intelligence
+✅ Knowledge Intelligence
+✅ AI Copilot
+✅ AI Investigation Engine
+✅ RCA Generation
+✅ Executive Communications
+✅ Tenant Management
+✅ Audit & Governance
+
+Outside Infrastructure Copilot
+❌ Monitoring Collection
+❌ Ticket Management
+❌ Knowledge Authoring
+❌ User Authentication
+❌ Cloud Resource Management
+These remain external systems.
+
+CTO Review
+This Context Diagram deliberately positions Infrastructure Copilot as:
+Plain Text1Enterprise Systems2           ↓3 4Infrastructure Copilot5(Operational Intelligence Layer)6 7           ↓8 9Humans Make Faster DecisionsShow more lines
+The architecture is consistent with enterprise AI patterns emphasizing context engineering, retrieval, governance, identity, observability, and secure integration with enterprise systems rather than standalone AI experiences.

@@ -1,0 +1,21 @@
+AI Architecture
+
+This is where most startups completely mess up.
+
+Wrong Architecture
+Plain Text1User2 ↓3GPT4 ↓5AnswerShow more lines
+Garbage.
+
+Production Architecture
+Plain Text1User2 ↓3AI Orchestrator4 ↓5Permission Check6 ↓7RAG Retrieval8 ↓9Context Builder10 ↓11Model12 ↓13Response Validator14 ↓15Audit16 ↓17UserShow more lines
+Enterprise references repeatedly emphasize that retrieval, governance, identity, permissions, and orchestration are essential for production AI systems. [How Micros...run thous | Viva Engage], [Enterprise...n Patterns | SharePoint]
+
+AI Components
+AI Gateway
+Controls:
+Plain Text1Model Routing2 3Cost Management4 5Rate Limits6 7Fallback ModelsShow more lines
+
+AI Orchestrator
+Responsible for:
+Plain Text1Prompt Construction2 3Context Retrieval4 5Tool Selection6 7Response ValidationShow more lines
+Microsoft RAG guidance describes using an orchestrator to determine retrieval, package context, call the model, and return grounded responses. [learn.microsoft.com], [learn.microsoft.com]

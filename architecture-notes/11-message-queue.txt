@@ -1,0 +1,31 @@
+Message Queue
+
+Recommendation
+Azure Service Bus
+
+Why Not RabbitMQ Initially?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FeatureService BusManaged✅Enterprise✅Security✅Retry Handling✅DLQ✅
+
+Events
+Plain Text1IncidentCreated2 3IncidentResolved4 5KnowledgeIndexed6 7EmbeddingGenerated8 9RcaGenerated10 11TenantProvisionedShow more lines

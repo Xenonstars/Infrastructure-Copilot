@@ -1,0 +1,16 @@
+RAG Architecture
+
+Why RAG
+Infrastructure Copilot's intelligence comes from:
+Plain Text1Incidents2 3Changes4 5Runbooks6 7SOPs8 9KB Articles10 11CMDB DataShow more lines
+Not from GPT memory.
+
+Recommended Pipeline
+Plain Text1Data Sources2      ↓3Ingestion4      ↓5Chunking6      ↓7Metadata Enrichment8      ↓9Embeddings10      ↓11Vector Index12      ↓13Hybrid Search14      ↓15AI ResponseShow more lines
+This follows Microsoft's RAG design flow of chunking, enrichment, embeddings, indexing, retrieval, and grounding generation. [learn.microsoft.com]
+
+Vector Database Decision
+Azure AI Search
+Recommended
+Why
+Plain Text1Enterprise Support2 3Hybrid Search4 5Semantic Search6 7Security Controls8 9Azure IntegrationShow more lines

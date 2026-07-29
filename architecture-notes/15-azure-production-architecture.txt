@@ -1,0 +1,3 @@
+Azure Production Architecture
+
+Plain Text1Internet2   │3   ▼4 5Azure Front Door6   │7   ▼8 9WAF10   │11   ▼12 13API Management14   │15   ▼16 17AKS Cluster18   │19   ├─ Frontend Pods20   ├─ API Pods21   ├─ AI Pods22   ├─ Worker Pods23   └─ Integration Pods24 25   ▼26 27Databases28 29  PostgreSQL30 31  Azure AI Search32 33  Redis34 35  Blob Storage36 37  Service Bus38 39   ▼40 41Azure OpenAI42 43   ▼44 45Monitoring46 47Azure Monitor48 49Application Insights50 51Log Analytics52 53Microsoft SentinelShow more lines

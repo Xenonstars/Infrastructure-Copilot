@@ -1,0 +1,19 @@
+Authentication Architecture
+
+Recommendation
+Microsoft Entra ID First
+
+Supported:
+Plain Text1OIDC2 3OAuth24 5SAML6 7SCIMShow more lines
+
+Authentication Flow
+Plain Text1User Login2 3Entra ID4 5JWT Token6 7API Gateway8 9Tenant Resolution10 11Role Validation12 13Access GrantedShow more lines
+
+Why
+Enterprise customers demand:
+
+SSO
+MFA
+Conditional access
+
+Without this you fail security review.

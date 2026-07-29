@@ -1,0 +1,11 @@
+Logging Architecture
+
+Mandatory
+Every AI interaction logged.
+
+Azure Stack
+Plain Text1Application Insights2 3Log Analytics4 5OpenTelemetryShow more lines
+
+Log Categories
+Plain Text1API Logs2 3Infrastructure Logs4 7Security Logs8 9Audit Logs10 11AI Logs12 13Cost LogsShow more lines
+The internal guidance in Microsoft-Secure-AI--Technical-Guide-for-Architects recommends integrating AI telemetry into existing security operations rather than isolated dashboards. [Microsoft...Architects | SharePoint]

@@ -1,0 +1,39 @@
+Frontend Architecture
+
+Recommendation
+React + TypeScript
+
+Why
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+BenefitReasonEnterprise adoptionLarge talent poolPerformanceFast renderingSecurityMature ecosystemMaintainabilityStrong typingFuture-proofIndustry standard
+
+UI Modules
+Plain Text1Dashboard2 3Incident Intelligence4 5Change Intelligence6 7Knowledge Search8 9AI Copilot Chat10 11Analytics12 13Administration14 15Tenant Management16 17Audit LogsShow more lines
+
+State Management
+Plain Text1Redux ToolkitShow more lines
+Why:
+
+Predictable
+Scalable
+Enterprise friendly

@@ -1,0 +1,258 @@
+Infrastructure Copilot: Product Engineering Constitution
+
+1. Business Perspective
+Infrastructure Copilot is not a chatbot. It is an enterprise AIOps and infrastructure intelligence platform.
+The product must help enterprises reduce operational pain in areas where they already spend money:
+
+Incident triage
+Major incident management
+Change impact analysis
+Infrastructure health visibility
+Runbook and SOP retrieval
+RCA/PIR generation
+Alert correlation
+Cloud cost and reliability recommendations
+DevOps/SRE workflow assistance
+ITSM integration
+
+Microsoft’s Azure guidance separates SaaS as a business model from multitenancy as an architecture concept, which matters because we are not merely building a hosted app. We are building a vendor-operated product where multiple enterprise customers consume the same platform while requiring strict customer isolation. [learn.microsoft.com], [learn.microsoft.com]
+The enterprise buyer will not pay because the AI “answers questions.” They will pay if it improves:
+
+Mean time to acknowledge
+Mean time to resolve
+Change failure analysis
+SLA compliance
+Incident communication quality
+RCA quality
+Engineer productivity
+Audit readiness
+Operational governance
+
+My challenge to your assumption: Do not start with “AI features.” Start with painful enterprise workflows. AI is the accelerator, not the product. If the workflow is not valuable without AI, adding AI just creates an expensive hallucination machine wearing a blazer.
+
+2. Technical Architecture
+The long-term architecture must be modular, cloud-native, multi-tenant, AI-ready, and integration-first.
+Recommended High-Level Architecture
+Plain Text1Client Layer2  - Web App3  - Admin Portal4  - Teams App5  - Slack App6  - API Consumers7 8API Gateway Layer9  - REST APIs10  - OpenAPI Specification11  - Rate Limiting12  - Tenant Routing13  - Auth Token Validation14 15Application Layer16  - Incident Service17  - Change Intelligence Service18  - Asset/CMDB Service19  - Knowledge Service20  - Notification Service21  - AI Orchestration Service22  - Integration Service23 24AI Layer25  - RAG Orchestrator26  - Tool-Calling Engine27  - Prompt Policy Engine28  - Evaluation Engine29  - Guardrail Engine30  - Model Gateway31 32Data Layer33  - Tenant Metadata Store34  - Operational Database35  - Vector Index36  - Object Storage37  - Audit Log Store38  - Time-Series Store39 40Integration Layer41  - ServiceNow Connector42  - Jira Connector43  - GitHub Connector44  - Azure DevOps Connector45  - Azure Connector46  - AWS Connector47  - GCP Connector48  - Kubernetes Connector49  - VMware Connector50  - Teams/Slack Connector51 52Platform Layer53  - Kubernetes / Container Apps54  - CI/CD55  - IaC56  - Observability57  - Secrets Management58  - Policy-as-CodeShow more lines
+
+Microsoft’s RAG architecture guidance describes a pattern where the user query goes to an intelligent application, then an orchestrator determines the search, retrieves top results from Azure AI Search, packages results with the prompt, sends it to the language model, and returns the response. It also describes the grounding data pipeline: ingest documents, chunk them, enrich metadata, embed chunks, and persist them in a search index. [learn.microsoft.com]
+For secure multitenant RAG, Microsoft guidance explicitly highlights that tenants and users must only incorporate grounding data they are authorized to access. That must become a non-negotiable architectural rule for Infrastructure Copilot. [learn.microsoft.com]
+Architecture Decision: Monolith vs Modular Monolith vs Microservices
+
+ApproachProsConsRecommendationTraditional MonolithSimple deployment, low costHard to scale teams/modules, higher couplingReject for enterprise SaaS
+Microservices from day oneScalable boundaries, independent deploymentsExpensive, complex, DevOps-heavyToo early unless team is large
+Modular Monolith + Event-Driven ExtensionsClean boundaries, lower cost, easier testing, future microservice extractionRequires disciplineBest initial production approach
+Recommendation: Start with a modular monolith using clean architecture, domain modules, strict interfaces, and event-driven boundaries. Extract services later when scale demands it. This is not “quick.” This is how you avoid building a distributed disaster before you even have customers.
+
+3. Security Considerations
+Security is the product. Not a feature. Not a sprint-14 backlog item. The moment Infrastructure Copilot connects to ServiceNow, cloud platforms, logs, or enterprise knowledge bases, it becomes a sensitive operational control plane.
+The internal Microsoft-Secure-AI--Technical-Guide-for-Architects says secure AI is an enterprise security architecture problem spanning identity, data governance, cloud posture, application security, policy enforcement, detection engineering, compliance, and operational resilience. It also states that AI systems should access only approved data, through trusted identities, within defined policy boundaries, with telemetry for monitoring, investigation, and response. [Microsoft...Architects | SharePoint]
+Mandatory Security Controls
+Identity and Access
+
+SSO with Microsoft Entra ID, Okta, and SAML/OIDC
+Tenant-level RBAC
+User-level permissions
+Service-account governance
+Just-in-time admin access
+SCIM provisioning for enterprise customers
+MFA enforcement through customer IdP
+
+Data Isolation
+
+Every table must include tenant_id
+Every API request must resolve tenant context
+Every vector chunk must include tenant and access metadata
+Every integration token must be tenant-scoped
+No cross-tenant cache keys
+No shared prompt context across tenants
+No global embeddings without tenant boundary enforcement
+
+AI Security
+OWASP’s 2025 LLM Top 10 includes risks such as prompt injection, sensitive information disclosure, supply chain risk, data and model poisoning, improper output handling, excessive agency, system prompt leakage, vector and embedding weaknesses, misinformation, and unbounded consumption. These must map directly into our threat model. [owasp.org], [owasp.org]
+For Infrastructure Copilot, that means:
+
+Prompt injection detection
+Retrieval filtering before model call
+Output validation before tool execution
+No autonomous production changes initially
+Human approval for remediation actions
+Tool permission scoping
+AI response citations
+Sensitive-data redaction
+Full audit trail
+Model usage monitoring
+Token abuse controls
+
+Critical principle: The model must never be trusted as an authority. It is an assistant behind policy, not a god with API keys. Revolutionary concept, apparently.
+
+4. Scalability
+Scalability must be designed across four dimensions:
+A. Tenant Scalability
+Support multiple tenancy models:
+
+ModelUse CaseCostIsolationShared app + shared DB + tenant partitioningSMB/mid-marketLowMediumShared app + dedicated DB per tenantEnterpriseMediumHighDedicated deployment per tenantRegulated enterpriseHighVery HighHybrid modelBest commercial flexibilityBalanced
+Microsoft guidance states that multitenancy does not imply every component is shared. It means at least some components are shared across tenants. That gives us room to design tiers: shared for smaller customers, isolated for large regulated customers. [learn.microsoft.com], [learn.microsoft.com]
+B. AI Scalability
+AI cost can destroy SaaS margins if uncontrolled.
+Controls required:
+
+Model gateway for routing requests
+Token budget per tenant
+Rate limits by plan
+Cached answers for repeated queries
+Batch embeddings
+Background indexing
+Hybrid retrieval to reduce unnecessary context
+Smaller models for classification and routing
+Larger models only for complex reasoning
+
+C. Integration Scalability
+Each connector should follow the same contract:
+Plain Text1Connector Interface2  - authenticate()3  - validateConnection()4  - fetchResources()5  - normalizePayload()6  - mapToDomainModel()7  - syncIncremental()8  - handleRateLimit()9  - emitTelemetry()Show more lines
+Do not hardcode ServiceNow logic inside the Incident module. That is how products become spaghetti with a login page.
+
+D. Operational Scalability
+The Azure Well-Architected Framework centers workload design around reliability, security, cost optimization, operational excellence, and performance efficiency. These pillars should become our architecture review checklist for every Infrastructure Copilot module. [learn.microsoft.com]
+
+5. Risks
+Here is the brutal list.
+Product Risks
+
+Enterprises may already have ServiceNow AI, Azure Copilot, Dynatrace, Datadog, or Splunk AI.
+“Infrastructure Copilot” sounds broad. Broad products are hard to sell.
+If we try to support Azure, AWS, GCP, VMware, Kubernetes, ServiceNow, Jira, GitHub, Teams, and Slack from day one, we will build a graveyard of half-working connectors.
+
+Technical Risks
+
+Cross-tenant data leakage
+Bad tenant isolation in vector search
+Hallucinated remediation guidance
+Prompt injection through tickets, logs, KB articles, or chat messages
+Cloud API permission overreach
+Integration rate limits
+High AI inference cost
+Poor retrieval quality
+Weak auditability
+
+Commercial Risks
+
+Buyer may not trust AI to touch production operations.
+Security approval cycles will be long.
+If value is not measurable, procurement will kill it.
+Competing against platform-native AI requires a sharper niche.
+
+My challenge to your assumption
+Do not position this as “Copilot for all infrastructure” at first. That is too wide.
+Position v1 as:
+
+AI-powered Incident and Change Intelligence for enterprise IT operations.
+
+That wedge is closer to your real strength: MIM, ITSM, outages, change risk, RCA, communication. Win there first. Expand later.
+
+6. Recommended Implementation
+Product Wedge
+Start with Incident Intelligence + Change Risk + Knowledge Retrieval.
+Not cloud automation. Not Kubernetes self-healing. Not multi-cloud FinOps. Those can come later.
+
+MVP That Is Still Enterprise-Grade
+The first paid-capable version should include:
+
+Tenant management
+SSO-ready identity architecture
+ServiceNow/Jira ticket ingestion
+Knowledge ingestion
+Incident similarity search
+Change-to-incident correlation
+RCA draft generation
+Leadership update generation
+Audit logs
+Admin controls
+AI cost controls
+OpenAPI-based backend
+
+This is not a demo. This is a narrow production product.
+
+Recommended Initial Stack
+
+LayerRecommendationWhyFrontendReact + TypeScriptEnterprise UI ecosystemBackend.NET 9 or Java Spring BootStrong enterprise adoptionAPIREST + OpenAPIEasier enterprise integrationAuthOIDC/SAML via Entra/OktaEnterprise standardDBPostgreSQLCost-effective, reliable, strong relational modelVectorAzure AI Search or pgvector initiallyAzure AI Search is stronger for enterprise RAG, pgvector is lower costQueueAzure Service Bus or Kafka laterDurable async processingCacheRedisRate limits, sessions, repeated queriesStorageBlob/S3-compatible abstractionMulti-cloud futureAIAzure OpenAI first, model gateway abstractionEnterprise trust and securityInfraContainers first, Kubernetes laterLower operational burden earlyIaCTerraformMulti-cloud supportObservabilityOpenTelemetry + Azure Monitor/GrafanaVendor-flexible telemetry
+
+Best Initial Architecture Choice
+Backend: .NET 9 Clean Architecture
+Frontend: React + TypeScript
+Database: PostgreSQL
+AI Retrieval: Azure AI Search for enterprise tier, pgvector for low-cost tier
+Deployment: Azure Container Apps initially, AKS when scale and enterprise networking justify it
+IaC: Terraform
+Auth: Entra ID first, Okta/SAML next
+Primary integration: ServiceNow first, Jira second
+Why? Because enterprise buyers trust .NET/Java more than hobby-stack Python-only products. Python is fine for AI workers, ingestion pipelines, evaluation jobs, and prototypes, but the core SaaS backend should look procurement-safe.
+
+Core Domain Modules
+Plain Text1src/2  InfrastructureCopilot.Api/3  InfrastructureCopilot.Application/4  InfrastructureCopilot.Domain/5  InfrastructureCopilot.Infrastructure/6  InfrastructureCopilot.Connectors/7  InfrastructureCopilot.AI/8  InfrastructureCopilot.Observability/9  InfrastructureCopilot.Tests/Show more lines
+
+Clean Architecture Rules
+
+Domain has no dependency on infrastructure
+Application layer defines interfaces
+Infrastructure implements interfaces
+API only orchestrates requests
+AI module cannot directly access database without policy enforcement
+Connectors normalize external systems into internal domain models
+Every operation is tenant-scoped
+
+Key Domain Entities
+Plain Text1Tenant2User3Role4Permission5Incident6Change7Problem8Asset9Service10KnowledgeArticle11Runbook12Alert13IntegrationConnection14ConnectorSyncJob15AiInteraction16AiCitation17AuditEventShow more lines
+
+First API Surface
+HTTP1POST /api/v1/incidents/import2GET  /api/v1/incidents/{id}3POST /api/v1/incidents/{id}/similar4POST /api/v1/incidents/{id}/summary5POST /api/v1/incidents/{id}/rca-draft6 7POST /api/v1/changes/{id}/risk-analysis8POST /api/v1/knowledge/query9POST /api/v1/copilot/chat10 11GET  /api/v1/audit/events12GET  /api/v1/tenants/{id}/usage13POST /api/v1/integrations/servicenow/connect14POST /api/v1/integrations/jira/connectShow more lines
+
+AI Request Flow
+Plain Text1User Request2  -> API Gateway3  -> Auth Validation4  -> Tenant Resolution5  -> Policy Check6  -> AI Orchestrator7  -> Retrieval Planner8  -> Permission-Filtered Search9  -> Prompt Builder10  -> Model Gateway11  -> Output Validator12  -> Citation Builder13  -> Audit Logger14  -> ResponseShow more lines
+
+The Microsoft secure multitenant RAG guidance specifically requires that users only use grounding data they are authorized to access, so permission-filtered retrieval must happen before the model receives context. [learn.microsoft.com]
+
+7. Future Improvements
+Once the first enterprise-grade wedge works, expand in this order:
+Phase 2: Deeper ITSM Intelligence
+
+Problem management recommendations
+Known error database matching
+SLA breach prediction
+Escalation recommendation
+Assignment group prediction
+
+Phase 3: Cloud and Infra Connectors
+
+Azure Resource Graph
+AWS Config
+GCP Asset Inventory
+Kubernetes API
+VMware vCenter
+Linux/Windows telemetry ingestion
+
+Phase 4: AIOps Correlation
+
+Alert clustering
+Event correlation
+Change blast-radius analysis
+Probable root cause ranking
+Service dependency graph
+
+Phase 5: Controlled Remediation
+
+Human-approved runbook execution
+GitHub Actions / Azure DevOps pipeline triggers
+ServiceNow task creation
+Teams/Slack incident war-room automation
+Kubernetes restart suggestions with approval gates
+
+Phase 6: Enterprise Marketplace
+
+Connector marketplace
+Custom runbook plugins
+Customer-specific AI policies
+Bring-your-own-model support
+Sovereign/private deployment option
+
+Internal enterprise AI references also point toward multi-tenant, secure, hybrid and multi-cloud deployment models, plus the shift from proof-of-concept to operationalized AI at scale. That aligns with building Infrastructure Copilot as a governed platform, not a one-off AI app.

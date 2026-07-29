@@ -1,0 +1,35 @@
+Backend Architecture
+
+Recommendation
+.NET 9 Clean Architecture
+
+Why
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+OptionVerdictNode.jsNot idealPythonGreat for AI onlyJavaExcellent.NETBest balance
+Recommendation:
+Plain Text1Frontend:2React3 4Backend:5.NET 96 7AI Workers:8PythonShow more lines
+
+Clean Architecture Structure
+Plain Text1src/2 3Api/4 5Application/6 7Domain/8 9Infrastructure/10 11AI/12 13Integrations/14 15Shared/16 17Tests/Show more lines
+
+Domain Modules
+Plain Text1Incident Module2 3Change Module4 5Asset Module6 7Knowledge Module8 9RCA Module10 11User Module12 13Tenant Module14 15Audit Module16 17Billing ModuleShow more lines

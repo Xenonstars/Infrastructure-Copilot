@@ -1,0 +1,190 @@
+Infrastructure Copilot - Domain Model (DDD) v1.0
+
+Business Perspective
+Infrastructure Copilot's primary job is:
+
+Convert infrastructure data, incidents, changes, knowledge, alerts, and operational context into actionable intelligence that reduces MTTR.
+
+The domain model must therefore revolve around:
+
+Incident Management
+Change Management
+Configuration Management
+Knowledge Management
+AI Intelligence
+Multi-Tenancy
+Integrations
+Audit & Governance
+
+Bounded Contexts
+Instead of one giant application, we create business domains.
+Plain Text1Infrastructure Copilot2 3├── Identity Context4├── Tenant Context5├── Incident Context6├── Change Context7├── Configuration Context8├── Knowledge Context9├── AI Intelligence Context10├── Integration Context11├── Audit Context12├── Notification Context13└── Billing ContextShow more lines
+
+Core Domain Model
+Tenant Context
+Entire SaaS platform revolves around tenants.
+Plain Text1Tenant2│3├── Users4├── Integrations5├── Knowledge Sources6├── Incidents7├── Changes8├── Assets9└── AI InteractionsShow more lines
+
+Tenant
+Plain Text1Tenant2---------3Id4Name5TenantCode6Plan7Status8Region9CreatedDateShow more lines
+
+User
+Plain Text1User2---------3Id4TenantId5Email6DisplayName7Role8Status9LastLoginShow more lines
+
+Role
+Plain Text1Role2---------3Id4Name5DescriptionShow more lines
+
+Permission
+Plain Text1Permission2---------3Id4Resource5ActionShow more lines
+
+Incident Intelligence Domain
+This is our revenue-generating domain.
+
+Incident Aggregate
+Plain Text1Incident2│3├── Timeline4├── Related Changes5├── Related Alerts6├── Related Assets7├── Similar Incidents8├── RCAs9└── AI AnalysesShow more lines
+
+Incident
+Plain Text1Incident2---------3Id4TenantId5 6ExternalId7 8Title9Description10 11Priority12Severity13 14Status15 16Source17 18AssignmentGroup19 20OpenedAt21ResolvedAt22 23BusinessImpactShow more lines
+
+IncidentTimelineEvent
+Plain Text1IncidentTimelineEvent2 3Id4IncidentId5 6Timestamp7 8EventType9 10DescriptionShow more lines
+
+SimilarIncident
+Plain Text1SimilarIncident2 3Id4IncidentId5 6SimilarIncidentId7 8ConfidenceScoreShow more lines
+
+RootCauseAnalysis
+Plain Text1RootCauseAnalysis2 3Id4IncidentId5 6Summary7 8RootCause9 10CorrectiveAction11 12PreventiveAction13 14CreatedByAIShow more lines
+
+Change Intelligence Domain
+One of the strongest differentiators.
+Plain Text1Change2│3├── Risk Assessment4├── Related Incidents5├── Related Assets6└── Deployment HistoryShow more lines
+
+Change
+Plain Text1Change2 3Id4TenantId5 6ExternalId7 8Title9 10Description11 12RiskLevel13 14Status15 16ScheduledStart17 18ScheduledEnd19 20ImplementationPlan21 22RollbackPlanShow more lines
+
+ChangeRiskAssessment
+Plain Text1ChangeRiskAssessment2 3Id4ChangeId5 6RiskScore7 8BlastRadius9 10Confidence11 12GeneratedByAIShow more lines
+
+ChangeIncidentCorrelation
+Plain Text1ChangeIncidentCorrelation2 3Id4 5ChangeId6 7IncidentId8 9ConfidenceScoreShow more lines
+
+Configuration Management Domain
+This becomes the system dependency graph.
+
+Asset
+Plain Text1Asset2 3Id4TenantId5 6Name7 8Type9 10Environment11 12Criticality13 14OwnerShow more lines
+
+Configuration Item (CI)
+Plain Text1ConfigurationItem2 3Id4 5AssetId6 7CiType8 9StatusShow more lines
+
+Service
+Plain Text1Service2 3Id4 5Name6 7BusinessOwner8 9TechnicalOwner10 11TierShow more lines
+
+Service Dependency
+Plain Text1ServiceDependency2 3ParentServiceId4 5ChildServiceIdShow more lines
+
+This eventually drives:
+Plain Text1Impact Analysis2 3Blast Radius4 5Dependency Discovery6 7AI InvestigationShow more lines
+
+Knowledge Domain
+Infrastructure Copilot becomes valuable through enterprise knowledge.
+Enterprise RAG guidance emphasizes ingesting content, chunking it, enriching metadata, generating embeddings, and storing indexed knowledge that can be retrieved during AI analysis. [RE: EG-Ame...validation | Outlook], [RE: 100048...?reminder1 | Outlook]
+
+Knowledge Source
+Plain Text1KnowledgeSource2 3Id4 5TenantId6 7Type8 9StatusShow more lines
+
+Sources:
+Plain Text1ServiceNow KB2 3Confluence4 5SharePoint6 7Runbooks8 9SOPs10 11DocumentsShow more lines
+
+Knowledge Document
+Plain Text1KnowledgeDocument2 3Id4 5SourceId6 7Title8 9ContentHash10 11Category12 13OwnerShow more lines
+
+Knowledge Chunk
+Plain Text1KnowledgeChunk2 3Id4 5DocumentId6 7ChunkText8 9EmbeddingId10 11MetadataShow more lines
+
+Runbook
+Plain Text1Runbook2 3Id4 5Title6 7TechnicalArea8 9Version10 11StatusShow more lines
+
+AI Intelligence Domain
+This is NOT the same as Knowledge.
+Knowledge stores information.
+AI Intelligence generates decisions.
+
+AI Interaction
+Plain Text1AIInteraction2 3Id4 5TenantId6 7UserId8 9Prompt10 11Response12 13Model14 15TokensUsed16 17Cost18 19TimestampShow more lines
+
+AI Citation
+Plain Text1AICitation2 3Id4 5AIInteractionId6 7SourceType8 9SourceIdShow more lines
+
+AI Analysis
+Plain Text1AIAnalysis2 3Id4 5EntityType6 7EntityId8 9AnalysisType10 11Result12 13ConfidenceScoreShow more lines
+Examples:
+Plain Text1Root Cause2 3Incident Summary4 5Change Risk6 7Executive Update8 9RCA DraftShow more lines
+
+AI Recommendation
+Plain Text1AIRecommendation2 3Id4 5AnalysisId6 7Recommendation8 9Priority10 11ExplanationShow more lines
+
+Alert & Observability Domain
+Future AIOps engine.
+
+Alert
+Plain Text1Alert2 3Id4 5TenantId6 7Source8 9Severity10 11Message12 13CreatedAtShow more lines
+
+Alert Correlation
+Plain Text1AlertCorrelation2 3Id4 5AlertId6 7CorrelatedAlertId8 9ConfidenceScoreShow more lines
+
+Monitoring Signal
+Plain Text1MonitoringSignal2 3Id4 5Source6 7MetricName8 9MetricValue10 11TimestampShow more lines
+
+Integration Domain
+Everything external enters through this domain.
+
+Integration
+Plain Text1Integration2 3Id4 5TenantId6 7Type8 9StatusShow more lines
+
+Types:
+Plain Text1ServiceNow2Jira3Azure4AWS5Kubernetes6VMware7Teams8SlackShow more lines
+
+Connector Configuration
+Plain Text1ConnectorConfiguration2 3Id4 5IntegrationId6 7AuthenticationType8 9ConfigurationShow more lines
+
+Sync Job
+Plain Text1SyncJob2 3Id4 5IntegrationId6 7StartedAt8 9CompletedAt10 11StatusShow more lines
+
+Audit Domain
+Required for enterprise customers.
+The internal Secure AI architecture guidance emphasizes telemetry, governance, monitoring, auditing, and security controls around enterprise AI workloads.
+
+Audit Event
+Plain Text1AuditEvent2 3Id4 5TenantId6 7UserId8 9Action10 11ResourceType12 13ResourceId14 15TimestampShow more lines
+
+Security Event
+Plain Text1SecurityEvent2 3Id4 5TenantId6 7EventType8 9Severity10 11DescriptionShow more lines
+
+Notification Domain
+Plain Text1Notification2 3Id4 5TenantId6 7UserId8 9Channel10 11Payload12 13StatusShow more lines
+
+Channels:
+Plain Text1Email2 3Teams4 5Slack6 7SMSShow more lines
+
+Billing Domain
+For SaaS monetization.
+
+Subscription
+Plain Text1Subscription2 3Id4 5TenantId6 7Plan8 9Status10 11RenewalDateShow more lines
+
+Usage Record
+Plain Text1UsageRecord2 3Id4 5TenantId6 7MetricType8 9Quantity10 11TimestampShow more lines
+
+Track:
+Plain Text1AI Requests2 3Tokens4 5Users6 7Integrations8 9Storage10 11SearchesShow more lines
+
+Aggregate Root Summary
+These become the primary aggregate roots in the system:
+Plain Text1Tenant2 3User4 5Incident6 7Change8 9Service10 11Asset12 13KnowledgeDocument14 15Runbook16 17AIInteraction18 19Alert20 21Integration22 23SubscriptionShow more lines
+
+Final Domain Relationship Diagram
+Plain Text1Tenant2│3├── Users4├── Incidents5│      ├── Alerts6│      ├── Changes7│      ├── RCA8│      └── AIAnalysis9│10├── Assets11│      └── Services12│13├── Knowledge14│      ├── Documents15│      ├── Chunks16│      └── Runbooks17│18├── Integrations19│      └── SyncJobs20│21├── AIInteractions22│      └── Citations23│24├── AuditEvents25│26└── SubscriptionShow more lines
+
+Co-Founder Architecture Review
+This domain model is intentionally designed around the Incident → Change → Service → Knowledge → AI relationship because reducing MTTR is the primary business objective.

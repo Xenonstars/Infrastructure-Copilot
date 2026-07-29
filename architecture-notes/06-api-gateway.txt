@@ -1,0 +1,10 @@
+API Gateway
+
+Recommendation
+Azure API Management
+
+Why
+Plain Text1Rate Limiting2 3API Versioning4 5Subscriptions6 7Developer Portal8 9Usage Monitoring10 11OAuth Integration12 13CachingShow more lines
+
+Example Route
+Plain Text1/api/v1/incidents2 3/api/v1/changes4 5/api/v1/knowledge6 7/api/v1/copilot8 9/api/v1/adminShow more lines

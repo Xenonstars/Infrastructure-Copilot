@@ -1,0 +1,10 @@
+Security Architecture
+
+Non-negotiable.
+Enterprise AI guidance emphasizes identity governance, data security posture, permission boundaries, telemetry, and AI-specific security monitoring. [Microsoft...Architects | SharePoint], [Weaponizin...are blind  | Viva Engage]
+
+Security Controls
+Plain Text1Entra ID2 3Private Endpoints4 5Key Vault6 7RBAC8 9Tenant Isolation10 11Managed Identity12 13Secrets Rotation14 15Encryption At Rest16 17Encryption In TransitShow more lines
+
+AI Guardrails
+Plain Text1Prompt Injection Detection2 3PII Masking4 5Output Validation6 7Citation Enforcement8 9Tool Access Controls10 11Human Approval GatesShow more lines

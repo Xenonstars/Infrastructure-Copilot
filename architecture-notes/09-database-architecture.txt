@@ -1,0 +1,15 @@
+Database Architecture
+
+Recommendation
+PostgreSQL Flexible Server
+
+Reason:
+Plain Text1Low Cost2 3Reliable4 5Mature6 7Supports Multi-Tenant ModelsShow more lines
+
+Tenant Model
+Every table:
+SQL1tenant_idShow more lines
+
+Example:
+SQL1Incident2 3id4 5tenant_id6 7title8 9severity10 11statusShow more lines
+Multitenant guidance stresses tenant separation as a core architectural requirement. [learn.microsoft.com], [learn.microsoft.com]

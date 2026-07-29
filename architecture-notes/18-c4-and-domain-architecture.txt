@@ -1,0 +1,90 @@
+C4 Architecture + Domain Model
+
+C4 Level 1 – System Context Diagram
+Shows:
+- Enterprise Customers
+- Infrastructure Copilot
+- ServiceNow
+- Jira
+- Azure
+- AWS
+- GCP
+- Kubernetes
+- VMware
+- Microsoft Teams
+- Slack
+- Identity Providers (Entra ID, Okta)
+
+C4 Level 2 – Container Diagram
+Shows:
+- React Frontend
+- API Gateway
+- Backend Services
+- AI Orchestrator
+- RAG Service
+- Integration Service
+- PostgreSQL
+- Azure AI Search
+- Redis
+- Service Bus
+- Blob Storage
+- Azure OpenAI
+- Monitoring Stack
+
+C4 Level 3 – Component Diagram
+For each major service:
+- Incident Intelligence Service
+- Change Intelligence Service
+- AI Orchestrator
+- RAG Engine
+- Knowledge Service
+- Authentication Service
+- Tenant Management Service
+- Audit Service
+
+Including:
+- Interfaces
+- Dependency relationships
+- Event flows
+- Internal modules
+
+C4 Level 4 – Deployment Diagram
+Production AKS deployment:
+Plain Text1Azure Front Door2    │3WAF4    │5API Management6    │7AKS Cluster8    ├─ Frontend Pods9    ├─ API Pods10    ├─ AI Pods11    ├─ Worker Pods12    └─ Integration Pods13 14Service Bus15Redis16PostgreSQL17Azure AI Search18Blob Storage19Azure OpenAI20Key Vault21App Insights22SentinelShow more lines
+
+Complete Domain Model
+Including:
+Plain Text1Tenant2User3Role4Permission5Subscription6 7Incident8Change9Problem10KnownError11 12Asset13ConfigurationItem14Service15 16KnowledgeArticle17Runbook18Document19 20Alert21CorrelationRule22 23AiConversation24AiInteraction25AiCitation26 27Connector28ConnectorConfig29ConnectorSync30 31AuditEvent32NotificationShow more lines
+
+Full Database Schema
+Tables with:
+- PKs
+- FKs
+- Indexes
+- Partitioning strategy
+- Multi-tenant strategy
+- Retention policy
+
+Example:
+SQL1tenants2 3users4 5roles6 7permissions8 9incidents10 11changes12 13services14 15assets16 17knowledge_articles18 19incident_similarities20 21ai_interactions22 23audit_events24 25connector_configs26 27connector_runsShow more lines
+
+Event-Driven Architecture
+Commands:
+Plain Text1CreateIncident2 3AnalyzeIncident4 5GenerateRCA6 7RunKnowledgeIndex8 9SyncServiceNowShow more lines
+Events:
+Plain Text1IncidentCreated2 3IncidentResolved4 5KnowledgeIndexed6 7EmbeddingGenerated8 9RCACompleted10 11TenantProvisionedShow more lines
+
+Security Architecture
+Including:
+- RBAC
+- ABAC
+- Tenant Isolation
+- Field-Level Security
+- Audit Logging
+- Key Vault Integration
+- Prompt Injection Protection
+- PII Detection
+- AI Guardrails
+- SOC Integration
+
+This aligns with the secure enterprise AI and multitenant architecture guidance we found, which emphasizes identity governance, tenant isolation, retrieval orchestration, observability, auditability, and secure multitenant RAG patterns.

@@ -1,0 +1,11 @@
+Kubernetes Deployment
+
+AKS Architecture
+Plain Text1AKS Cluster2 3 ├── frontend4 ├── api5 ├── ai-service6 ├── ingestion-worker7 ├── integration-worker8 ├── scheduler9 └── monitoringShow more lines
+
+Namespaces
+Plain Text1prod2 3uat4 5dev6 7monitoringShow more lines
+
+Autoscaling
+Plain Text1HPA2 3KEDAShow more lines
+Based On:
