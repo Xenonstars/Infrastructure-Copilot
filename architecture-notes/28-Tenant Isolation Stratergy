@@ -1,0 +1,244 @@
+Tenant Isolation Strategy
+Infrastructure Copilot Enterprise SaaS Security Blueprint
+Ankit, this is the point where most SaaS AI products die.
+Not because of AI.
+Not because of architecture.
+Because one day:
+Plain Text1Customer A sees Customer B dataShow more lines
+Game over.
+No PRD.
+No GPT.
+No fancy UI.
+Just lawyers.
+The enterprise guidance and architecture references consistently emphasize that AI systems require strong identity controls, governance boundaries, authorization enforcement, auditability, and tenant-aware retrieval. [Reminder :...re Invited | Meeting], [learn.microsoft.com], [learn.microsoft.com]
+
+Executive Architecture Principle
+Golden Rule
+Plain Text1Never Trust The Application Layer AloneShow more lines
+Isolation must be enforced at:
+Plain Text1Identity Layer2 3API Layer4 5Service Layer6 7Database Layer8 9Cache Layer10 11Search Layer12 13RAG Layer14 15BYOK Layer16 17Audit LayerShow more lines
+Defense in depth.
+
+Tenant Isolation Maturity Model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+LevelIsolation TypeRiskCostL1App OnlyVery HighLowL2App + DB FiltersHighLowL3App + DB + RLSMediumLowL4Dedicated SchemaLowMediumL5Dedicated DatabaseVery LowHigh
+Microsoft guidance explicitly calls out separate databases, separate schemas, and row-level-security-based shared database approaches as tenant isolation options. [learn.microsoft.com], [learn.microsoft.com]
+
+Recommended Infrastructure Copilot Model
+For MVP:
+Plain Text1Shared Database2 3Shared Schema4 5tenant_id Everywhere6 7PostgreSQL RLS8 9Tenant-Aware Search10 11Tenant-Aware Cache12 13Tenant-Aware AIShow more lines
+For Enterprise Tier:
+Plain Text1Dedicated Database Per TenantShow more lines
+For Banking / Government:
+Plain Text1Dedicated Subscription2 3Dedicated Database4 5Dedicated Search ServiceShow more lines
+
+1. Identity Isolation
+Authentication Flow
+Plain Text1User2 ↓3 4Entra ID5 6 ↓7 8JWT9 10 ↓11 12Tenant Resolver13 14 ↓15 16Tenant Context CreatedShow more lines
+Every request must contain:
+JSON1{2  "userId": "123",3  "tenantId": "abc-bank",4  "roles": ["tenant.admin"]5}Show more lines
+The secure AI guidance emphasizes identity-driven systems, workload identities, permissions, token flows, and governance boundaries. [Reminder :...re Invited | Meeting]
+
+Tenant Context Object
+Every request gets:
+C#1public class TenantContext2{3    Guid TenantId;4    Guid UserId;5    string[] Roles;6    string SubscriptionPlan;7}8``Show more lines
+No service may execute without TenantContext.
+
+2. API Layer Isolation
+Every API request requires:
+HTTP1Authorization: Bearer JWT2 3X-Tenant-Id: tenant-guidShow more lines
+Middleware validates:
+Plain Text1JWT Tenant2=3Header TenantShow more lines
+Mismatch?
+HTTP1403 ForbiddenShow more lines
+
+API Policy
+Plain Text1No Anonymous APIs2 3No Public Internal APIs4 5No Tenant-Free APIsShow more lines
+
+3. Database Isolation
+This is the most important layer.
+Microsoft specifically recommends PostgreSQL Row Level Security for enforcing tenant isolation in shared-table multitenant systems. [learn.microsoft.com]
+
+Every Table
+Must contain:
+SQL1tenant_id UUID NOT NULLShow more lines
+Example:
+
+
+Row Level Security
+SQL1ALTER TABLE incidents2ENABLE ROW LEVEL SECURITY;Show more lines
+Policy:
+SQL1CREATE POLICY tenant_policy2ON incidents3USING (4    tenant_id =5    current_setting('app.tenant_id')::uuid6);Show more lines
+Request flow:
+Plain Text1Request2 3 ↓4 5Tenant Middleware6 7 ↓8 9SET app.tenant_id10 11 ↓12 13Query14 15 ↓16 17PostgreSQL EnforcementShow more lines
+This pattern is consistent with multitenant PostgreSQL guidance where access is restricted based on tenant context stored in session settings and enforced through RLS policies. [learn.microsoft.com], [techbuddies.io]
+
+4. Search Isolation (RAG)
+This is where AI products usually leak.
+Problem:
+Plain Text1Vector Search2finds most relevant document3 4NOT5 6Most authorized documentShow more lines
+Microsoft's secure multitenant RAG guidance specifically warns that users should only incorporate grounding data they are authorized to access. [learn.microsoft.com]
+
+Wrong Design
+Plain Text1Search Top 10 Chunks2 3Send To GPTShow more lines
+Danger:
+Plain Text1ABC Bank Chunk2 3Retrieved by4 5XYZ Retail UserShow more lines
+
+Correct Design
+Every chunk contains:
+JSON1{2  "tenantId": "abc-bank",3  "documentId": "123",4  "aclGroups": ["network-team"],5  "aclUsers": ["user-1"]6}Show more lines
+Search query:
+Plain Text1tenant_id == current tenant2 3AND4 5ACL == permittedShow more lines
+Only then:
+Plain Text1Retrieve Chunk2 3Build Prompt4 5Call ModelShow more lines
+The Azure multitenant RAG guidance and Azure AI Search multitenant guidance both emphasize authorization-aware retrieval and tenant content isolation. [learn.microsoft.com], [learn.microsoft.com]
+
+Search Index Strategy
+Small Customers
+Plain Text1Shared Search Service2 3Shared Index4 5Tenant FilteringShow more lines
+Enterprise
+Plain Text1Dedicated Index Per TenantShow more lines
+Azure AI Search documentation explicitly discusses strategies such as one index per tenant and other multitenancy isolation models. [learn.microsoft.com]
+
+5. BYOK Isolation
+This is unique to Infrastructure Copilot.
+Every tenant supplies:
+Plain Text1Own AI Endpoint2 3Own Model4 5Own CredentialsShow more lines
+Never shared.
+
+AI Provider Table
+SQL1ai_providers2 3provider_id4tenant_id5endpoint6secret_referenceShow more lines
+Rules:
+Plain Text1Tenant A2 3cannot see4 5Tenant B providerShow more lines
+Never.
+
+Runtime Flow
+Plain Text1Tenant Resolver2 3↓4 5Provider Resolver6 7↓8 9Tenant Provider10 11↓12 13Credential Lookup14 15↓16 17Model CallShow more lines
+No shared credentials.
+
+6. Cache Isolation
+A common SaaS failure.
+Bad:
+Plain Text1cache:incident:123Show more lines
+Good:
+Plain Text1cache:2abc-bank:3incident:4123Show more lines
+
+Cache Key Standard
+Plain Text1tenant:2resource:3entityShow more lines
+Example:
+Plain Text1abc-bank:incident:INC10012 3xyz-retail:incident:INC1001Show more lines
+
+7. Blob Storage Isolation
+All documents:
+Plain Text1tenant-id/Show more lines
+prefix.
+Example:
+Plain Text1/abc-bank/runbooks/db.pdf2 3/xyz-retail/runbooks/db.pdfShow more lines
+Never:
+Plain Text1/shared/runbooksShow more lines
+
+8. Worker Isolation
+Background jobs must inherit tenant context.
+Every event:
+JSON1{2  "tenantId": "abc-bank",3  "entityId": "123",4  "entityType": "incident"5}Show more lines
+Not:
+JSON1{2  "entityId": "123"3}Show more lines
+
+9. AI Memory Isolation
+Future Agent Memory.
+Must be scoped.
+Session key:
+Plain Text1tenantId2+3userId4+5conversationIdShow more lines
+Never:
+Plain Text1conversationId onlyShow more lines
+Because context leakage across users or tenants becomes possible.
+Authorization-aware state management is consistent with the governance and access-control themes described in the AI architecture and trust guidance. [Trust, Gov...Agentic AI | SharePoint], [Enterprise...n Patterns | SharePoint]
+
+10. Audit Isolation
+Every record:
+SQL1tenant_id2user_id3action4resource5timestampShow more lines
+Stored forever according to policy.
+
+Audit Example
+Plain Text1Tenant:2ABC Bank3 4User:5Ankit6 7Action:8Generate RCA9 10Incident:11INC100112 13Time:142026-07-30Show more lines
+Enterprise AI governance references repeatedly emphasize auditability, evidence preservation, monitoring, and accountability. [Cognizant...® AI Trust | SharePoint], [Cognizant...ust Center | SharePoint], [AI Governa...ering - V1 | PowerPoint]
+
+11. Enterprise Isolation Upgrade Path
+Starter Plan
+Plain Text1Shared PostgreSQL2 3Shared Search4 5Shared CacheShow more lines
+Professional
+Plain Text1Dedicated Search IndexShow more lines
+Enterprise
+Plain Text1Dedicated PostgreSQL Database2 3Dedicated Search Service4 5Dedicated Storage AccountShow more lines
+Regulated Enterprise
+Plain Text1Dedicated Azure Subscription2 3Dedicated Network4 5Dedicated OpenAI6 7Dedicated Key VaultShow more lines
+
+12. Isolation Testing Strategy
+Before production:
+Test 1
+Plain Text1Tenant A2requests Tenant B incidentShow more lines
+Expected:
+HTTP1403Show more lines
+Test 2
+Plain Text1Tenant A search2 3matches Tenant B documentShow more lines
+Expected:
+Plain Text10 resultsShow more lines
+Test 3
+Plain Text1Tenant A cache2 3reads Tenant B objectShow more lines
+Expected:
+Plain Text1cache missShow more lines
+Test 4
+Plain Text1Tenant A AI query2 3attempts Tenant B runbook retrievalShow more lines
+Expected:
+Plain Text1blockedShow more lines
+
+CTO Final Security Rule
+Infrastructure Copilot must assume:
+Plain Text1Every Developer2Can Make A Mistake3 4Every LLM5Can Hallucinate6 7Every User8Can Misconfigure9 10Every API11Can Be AttackedShow more lines
+Therefore:
+Plain Text1Identity Controls2+3RBAC4+5Tenant Context6+7Database RLS8+9Tenant-Aware Search10+11Tenant-Aware Cache12+13Tenant-Aware BYOK14+15Audit TrailShow more lines
+Together create the guarantee:
+
+Tenant A can never access Tenant B incidents, changes, documents, vector embeddings, AI provider configurations, secrets, citations, cache entries, or generated responses. [learn.microsoft.com], [learn.microsoft.com], [Reminder :...re Invited | Meeting]
+
+Architect verdict: This tenant isolation strategy is strong enough for MSPs, enterprises, and future SOC2 / ISO27001 / banking-grade reviews while still maintaining your low-cost shared-SaaS architecture.

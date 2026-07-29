@@ -1,0 +1,255 @@
+C4 Level 3 – Component Diagram
+AI Orchestrator Service (Strategic Core of Infrastructure Copilot)
+As CTO/co-founder, I consider the AI Orchestrator Service the most important component in the entire platform.
+The model is not the product.
+The orchestration layer is the product.
+Enterprise AI architecture references consistently emphasize that production AI systems require orchestration, retrieval, governance, identity controls, observability, evaluation, and tool integration around the model. They also highlight that retrieval is becoming a specialized capability and that AI systems need clear governance boundaries and auditability.
+
+1. Business Perspective
+When an Incident Manager asks:
+
+"Why is the payment platform down?"
+
+The AI must NOT:
+Plain Text1Query GPT2Return answerShow more lines
+That is demo architecture.
+Instead it must:
+Plain Text1Validate identity2 3Validate tenant4 5Retrieve incidents6 7Retrieve changes8 9Retrieve alerts10 11Retrieve runbooks12 13Build context14 15Run reasoning16 17Validate output18 19Create citations20 21Store audit evidenceShow more lines
+That is enterprise architecture.
+
+2. Component Diagram
+Plain Text1┌─────────────────────────────────────────────┐2│             AI ORCHESTRATOR                 │3└─────────────────────────────────────────────┘4 5User Request6      │7      ▼8 9┌───────────────────────┐10│ Request Controller    │11└───────────┬───────────┘12            │13            ▼14 15┌───────────────────────┐16│ Tenant Resolver       │17└───────────┬───────────┘18            │19            ▼20 21┌───────────────────────┐22│ Permission Evaluator  │23└───────────┬───────────┘24            │25            ▼26 27┌───────────────────────┐28│ Intent Classifier     │29└───────────┬───────────┘30            │31            ▼32 33┌───────────────────────┐34│ Retrieval Planner     │35└─────┬───────┬─────────┘36      │       │37 38      ▼       ▼39 40RAG Service  Tool Planner41 42      │43      ▼44 45┌───────────────────────┐46│ Context Builder       │47└───────────┬───────────┘48            │49            ▼50 51┌───────────────────────┐52│ Prompt Builder        │53└───────────┬───────────┘54            │55            ▼56 57┌───────────────────────┐58│ Model Gateway         │59└───────────┬───────────┘60            │61            ▼62 63 Azure OpenAI64 65            │66            ▼67 68┌───────────────────────┐69│ Output Validator      │70└───────────┬───────────┘71            │72            ▼73 74┌───────────────────────┐75│ Citation Builder      │76└───────────┬───────────┘77            │78            ▼79 80┌───────────────────────┐81│ Response Formatter    │82└───────────┬───────────┘83            │84            ▼85 86 User87 88──────────────────────────────89 90Cross Cutting Components91 92Audit Service93 94Telemetry Service95 96Cost Tracking Service97 98Guardrail Engine99 100Policy EngineShow more lines
+
+3. Component Responsibilities
+A. Request Controller
+Responsibility
+Entry point for every AI request.
+Inputs
+Plain Text1Chat Question2 3Incident Analysis Request4 5RCA Request6 7Change Risk RequestShow more lines
+Outputs
+Plain Text1Normalized AI RequestShow more lines
+Why
+All requests must follow the same governance flow.
+
+B. Tenant Resolver
+Responsibility
+Identify:
+Plain Text1Tenant2 3User4 5Subscription6 7PlanShow more lines
+Example
+Plain Text1Tenant:2ABC Bank3 4User:5Ankit6 7Plan:8EnterpriseShow more lines
+Why
+Everything downstream depends on tenant context.
+The secure multitenant AI guidance emphasizes that users should only receive data they are authorized to access.
+
+C. Permission Evaluator
+Responsibility
+Determine:
+Plain Text1Which data can be accessed2 3Which tools can be invoked4 5Which documents can be retrievedShow more lines
+Example
+Allowed
+Plain Text1ServiceNow KB2Runbooks3IncidentsShow more lines
+Denied
+
+Output
+Plain Text1Effective PermissionsShow more lines
+
+D. Intent Classifier
+Responsibility
+Determine what the user wants.
+Intent Types
+Plain Text1Incident Investigation2 3Root Cause Analysis4 5Change Analysis6 7Similar Incident Search8 9Runbook Search10 11Executive Summary12 13General ChatShow more lines
+Example
+Input
+Plain Text1Why did Database Cluster 3 fail?Show more lines
+Output
+Plain Text1Intent:2Incident InvestigationShow more lines
+
+E. Retrieval Planner
+Responsibility
+Determine:
+Plain Text1What data is requiredShow more lines
+Example
+Question:
+Plain Text1Why is Payments Down?Show more lines
+Required Retrieval:
+Plain Text1Incidents2 3Changes4 5Alerts6 7Services8 9RunbooksShow more lines
+The enterprise RAG architecture guidance describes an orchestrator determining retrieval and gathering relevant grounding information before model invocation.
+
+F. Tool Planner
+Responsibility
+Determine:
+Plain Text1Which internal tools are neededShow more lines
+Possible tools:
+Plain Text1Incident Search2 3Change Search4 5Knowledge Search6 7CMDB Lookup8 9Asset Lookup10 11Dependency LookupShow more lines
+Future:
+Plain Text1Slack Tool2 3Teams Tool4 5Automation ToolShow more lines
+
+G. Context Builder
+Responsibility
+Combine retrieved data.
+Input:
+Plain Text1Incident2Change3Alert4RunbookShow more lines
+Output:
+Plain Text1Investigation ContextShow more lines
+Example:
+Plain Text1Incident INC1232 3Recent Change CHG5554 5Alert CPU Spike6 7Runbook DB RecoveryShow more lines
+Become:
+Plain Text1Single AI Context PackageShow more lines
+
+H. Prompt Builder
+Responsibility
+Transform context into deterministic prompts.
+Prompt Structure:
+Plain Text1System Prompt2 3Security Instructions4 5Role Instructions6 7Retrieved Context8 9User QuestionShow more lines
+Why
+Never send raw user input directly to the LLM.
+
+I. Model Gateway
+Responsibility
+Single abstraction layer over AI models.
+Supported Models:
+Plain Text1Azure OpenAI GPT2 3Future Anthropic4 5Future Local ModelsShow more lines
+Why
+Avoid vendor lock-in.
+Enterprise AI architectures increasingly use model-agnostic orchestration patterns rather than tying applications directly to one model provider.
+
+J. Output Validator
+Responsibility
+Validate AI output.
+Checks:
+Plain Text1Hallucinations2 3Missing Citations4 5Unsafe Content6 7Policy ViolationsShow more lines
+Reject if:
+Plain Text1Confidence too lowShow more lines
+or
+Plain Text1No evidence foundShow more lines
+
+K. Citation Builder
+Responsibility
+Attach evidence.
+Example:
+Plain Text1Root Cause:2 3Database patch performed42 hours before outage.5 6Sources:7 8CHG0004519 10INC00092111 12DB Recovery RunbookShow more lines
+Business Value
+Trust.
+Engineers must know:
+Plain Text1WHYShow more lines
+the AI said something.
+
+L. Response Formatter
+Responsibility
+Convert output into user-friendly formats.
+Formats:
+Plain Text1Chat2 3Incident Summary4 5Executive Update6 7RCA Draft8 9JSON API ResponseShow more lines
+
+4. Cross-Cutting Components
+
+Guardrail Engine
+Responsibilities
+Plain Text1Prompt Injection Detection2 3Data Leakage Prevention4 5PII Detection6 7Content SafetyShow more lines
+The secure AI guidance specifically references prompt-injection protection, content controls, approval boundaries, and runtime safety controls.
+
+Policy Engine
+Responsibilities
+Plain Text1Business Rules2 3Tool Permissions4 5Approval Requirements6 7Governance ControlsShow more lines
+Example:
+Plain Text1AI can recommend.2 3AI cannot execute production changes.Show more lines
+
+Audit Service
+Every interaction stored.
+Plain Text1Prompt2 3Response4 5Citations6 7User8 9TimestampShow more lines
+Enterprise AI governance guidance emphasizes auditing, governance, reviewability, and operational controls.
+
+Telemetry Service
+Tracks:
+Plain Text1Latency2 3Failures4 5Accuracy6 7Retrieval Success8 9Model UsageShow more lines
+
+Cost Tracking Service
+Tracks:
+Plain Text1Prompt Tokens2 3Completion Tokens4 5Embedding Usage6 7Tenant CostShow more lines
+
+5. End-to-End Component Flow
+Example:
+User asks
+Plain Text1Why did Payment API fail today?Show more lines
+Flow
+Plain Text1Request Controller2      ↓3 4Tenant Resolver5      ↓6 7Permission Evaluator8      ↓9 10Intent Classifier11      ↓12 13Retrieval Planner14      ↓15 16RAG Service17      ↓18 19Context Builder20      ↓21 22Prompt Builder23      ↓24 25Model Gateway26      ↓27 28Output Validator29      ↓30 31Citation Builder32      ↓33 34Response Formatter35      ↓36 37UserShow more lines
+
+6. Component Quality Attributes
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ComponentAvailabilityScalingCriticalityRequest ControllerHighHorizontalHighTenant ResolverHighHorizontalCriticalPermission EvaluatorHighHorizontalCriticalRetrieval PlannerHighHorizontalCriticalContext BuilderHighHorizontalCriticalPrompt BuilderHighHorizontalCriticalModel GatewayHighHorizontalCriticalOutput ValidatorHighHorizontalCriticalCitation BuilderMediumHorizontalHighResponse FormatterMediumHorizontalMedium
+
+CTO Review
+If Infrastructure Copilot becomes a $100M ARR company, the reason will not be GPT.
+It will be because this orchestration layer successfully combines:
+Plain Text1Identity2+3Permissions4+5Retrieval6+7Context8+9Governance10+11Observability12+13AuditabilityShow more lines
+into a trustworthy investigation engine.
+That architectural pattern aligns with the enterprise AI principles highlighted across the referenced secure AI, MCP, and enterprise AI architecture materials: secure integrations, orchestration, governance, identity, observability, retrieval, and controlled enterprise access.

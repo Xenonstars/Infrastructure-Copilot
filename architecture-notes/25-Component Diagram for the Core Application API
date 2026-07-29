@@ -1,0 +1,165 @@
+C4 Level 3 – Component Diagram
+Core Application API (.NET Backend)
+This is the business core of Infrastructure Copilot.
+While the AI Orchestrator is responsible for reasoning, retrieval orchestration, citations, and model interaction, the Core Application API owns the business domains:
+
+Incident Intelligence
+Change Intelligence
+Knowledge Intelligence
+Configuration Management
+Tenant Management
+Audit & Compliance
+Reporting & Analytics
+
+This architecture aligns with enterprise AI patterns that emphasize governance, service management, operational intelligence, observability, service reliability engineering, AI-assisted incident management, and secure enterprise operations. [CIS Overview 2026 | PowerPoint], [AI in ITSM | SharePoint], [Microsoft...Architects | SharePoint]
+
+1. Business Perspective
+The Core API answers:
+Plain Text1What incidents exist?2 3What changed?4 5What service is impacted?6 7Who owns it?8 9What runbooks exist?10 11What knowledge is available?12 13What happened historically?14 15How do we calculate MTTR?16 17How do we govern tenants?Show more lines
+The AI layer should never become the source of truth.
+The domain services remain the system of record.
+
+2. Core Application API Component Diagram
+Plain Text1┌──────────────────────────────────────────────┐2│            CORE APPLICATION API              │3└──────────────────────────────────────────────┘4 5                     Request6 7                        │8                        ▼9 10┌──────────────────────────────────────────────┐11│ API Controllers                              │12└─────────────────┬────────────────────────────┘13                  │14                  ▼15 16┌──────────────────────────────────────────────┐17│ Tenant Context Middleware                    │18│ Authentication Middleware                    │19│ Authorization Middleware                     │20└─────────────────┬────────────────────────────┘21                  │22                  ▼23 24═══════════════════════════════════════════════25            DOMAIN SERVICES26═══════════════════════════════════════════════27 28 ┌────────────────────────┐29 │ Incident Service       │30 └────────────┬───────────┘31              │32 33 ┌────────────────────────┐34 │ Change Service         │35 └────────────┬───────────┘36              │37 38 ┌────────────────────────┐39 │ Asset Service          │40 └────────────┬───────────┘41              │42 43 ┌────────────────────────┐44 │ Service Graph Service  │45 └────────────┬───────────┘46              │47 48 ┌────────────────────────┐49 │ Knowledge Service      │50 └────────────┬───────────┘51              │52 53 ┌────────────────────────┐54 │ AI Analysis Service    │55 └────────────┬───────────┘56              │57 58 ┌────────────────────────┐59 │ Reporting Service      │60 └────────────┬───────────┘61              │62 63 ┌────────────────────────┐64 │ Tenant Service         │65 └────────────┬───────────┘66              │67 68 ┌────────────────────────┐69 │ User & RBAC Service    │70 └────────────┬───────────┘71              │72 73 ┌────────────────────────┐74 │ Audit Service          │75 └────────────┬───────────┘76              │77 78═══════════════════════════════════════════════79          INFRASTRUCTURE LAYER80═══════════════════════════════════════════════81 82         PostgreSQL Repositories83 84         Redis Cache85 86         Service Bus Publisher87 88         Blob Storage Client89 90         AI Orchestrator Client91 92         Azure AI Search Client93 94         Integration ConnectorsShow more lines
+
+3. Incident Service
+Purpose
+Primary revenue-generating module.
+Responsible for:
+Plain Text1Incident Management2 3Incident Search4 5Historical Correlation6 7Incident Lifecycle8 9Timeline GenerationShow more lines
+Internal Components
+Plain Text1Incident Service2 3 ├── Incident Repository4 5 ├── Similar Incident Engine6 7 ├── Timeline Builder8 9 ├── Incident Validator10 11 └── Incident Event PublisherShow more lines
+APIs
+HTTP1GET /incidents2 3GET /incidents/{id}4 5POST /incidents/{id}/similar6 7POST /incidents/{id}/timelineShow more lines
+Entities
+Plain Text1Incident2 3IncidentTimelineEvent4 5IncidentSimilarity6 7RootCauseAnalysisShow more lines
+Supports AI-assisted investigation and troubleshooting scenarios discussed in AI-in-ITSM and Leveraging-Microsoft-Copilot-to-Improve-B2B-Operations,-Incident-Management,-and-Customer-Communicat. [AI in ITSM | SharePoint], [Leveraging...Communicat | SharePoint]
+
+4. Change Service
+Purpose
+Most IT outages are linked to changes.
+Responsible for:
+Plain Text1Change Management2 3Risk Analysis4 5Correlation6 7Blast Radius AnalysisShow more lines
+Components
+Plain Text1Change Service2 3 ├── Change Repository4 5 ├── Correlation Engine6 7 ├── Risk Aggregator8 9 └── Change Event PublisherShow more lines
+APIs
+HTTP1GET /changes2 3GET /changes/{id}4 5POST /changes/{id}/risk6 7POST /changes/{id}/correlationsShow more lines
+
+5. Asset Service
+Purpose
+Manages infrastructure assets.
+Components
+Plain Text1Asset Service2 3 ├── Asset Repository4 5 ├── CMDB Mapper6 7 ├── Ownership Resolver8 9 └── Metadata ManagerShow more lines
+Stores
+Plain Text1Servers2 3VMs4 5Databases6 7Applications8 9Cloud Resources10 11Kubernetes ObjectsShow more lines
+APIs
+HTTP1GET /assets2 3GET /assets/{id}4 5POST /assets/syncShow more lines
+
+6. Service Graph Service
+Strategic Component
+This becomes your future AIOps engine.
+Purpose
+Build service relationships.
+
+Components
+Plain Text1Dependency Graph Builder2 3Impact Analyzer4 5Blast Radius Engine6 7Topology ResolverShow more lines
+APIs
+HTTP1GET /servicesid}/impactShow more lines
+This aligns with dependency mapping, service-awareness, observability, and reliability engineering concepts discussed in AI-in-ITSM. [AI in ITSM | SharePoint]
+
+7. Knowledge Service
+Purpose
+Own enterprise knowledge.
+Not AI.
+Just knowledge.
+Responsibilities
+Plain Text1Runbooks2 3SOPs4 5KB Articles6 7Documents8 9Knowledge MetadataShow more lines
+Components
+Plain Text1Knowledge Service2 3 ├── Document Repository4 5 ├── Chunk Manager6 7 ├── Metadata Manager8 9 ├── Version Manager10 11 └── Index PublisherShow more lines
+APIs
+HTTP1GET /knowledge2 3GET /runbooks4 5POST /documents6``Show more lines
+Publishes
+Plain Text1DocumentCreated2 3IndexRequested4 5KnowledgeUpdated6 Show more lines
+
+8. AI Analysis Service
+Purpose
+Bridge between Core API and AI Orchestrator.
+Responsibilities
+Plain Text1RCA Requests2 3Executive Summary Requests4 5Risk Analysis Requests6 7Incident Summary RequestsShow more lines
+Components
+Plain Text1AI Analysis Service2 3 ├── Analysis Request Builder4 5 ├── AI Client6 7 ├── Result Persistence8 9 └── Confidence ManagerShow more lines
+APIs
+HTTP1POST /analysis/rca2 3POST /analysis/summary4 5POST /analysis/change-riskShow more lines
+Important:
+Plain Text1This service2does not contain LLM logic.3 4It only coordinates requests.Show more lines
+
+9. Reporting Service
+Purpose
+Business intelligence layer.
+Calculates
+Plain Text1MTTR2 3MTTI4 5Change Success Rate6 7Repeat Incident Rate8 9AI Adoption10 11Knowledge UsageShow more lines
+Components
+Plain Text1Reporting Service2 3 ├── KPI Engine4 5 ├── Trend Analyzer6 7 ├── Metrics Repository8 9 └── Dashboard AggregatorShow more lines
+APIs
+HTTP1GET /reports/mttr2 3GET /reports/incidents4 5GET /reports/usageShow more lines
+
+10. Tenant Service
+Purpose
+Critical SaaS component.
+Components
+Plain Text1Tenant Provisioner2 3Quota Manager4 5Subscription Manager6 7Environment ManagerShow more lines
+APIs
+HTTP1GET /tenants2 3POST /tenants4 5GET /tenants/{id}Show more lines
+Owns
+Plain Text1Tenant2 3Tenant Settings4 5SubscriptionShow more lines
+
+11. User & RBAC Service
+Purpose
+Authorization layer.
+Components
+Plain Text1User Manager2 3Role Manager4 5Permission Engine6 7Policy ResolverShow more lines
+APIs
+HTTP1GET /users2 3POST /roles4 5GET /permissionsShow more lines
+The secure AI guidance stresses identity governance, application permissions, workload identity controls, and policy-driven access. [Microsoft...Architects | SharePoint]
+
+12. Audit Service
+Purpose
+Compliance and forensics.
+Stores
+Plain Text1Who did what2 3When4 5From where6 7Against which resourceShow more lines
+Components
+Plain Text1Audit Service2 3 ├── Audit Writer4 5 ├── Audit Query Engine6 7 ├── Compliance Exporter8 9 └── Retention ManagerShow more lines
+APIs
+HTTP1GET /audit/events2 3GET /audit/security4 5GET /audit/aiShow more lines
+The internal guidance in Microsoft-Secure-AI--Technical-Guide-for-Architects explicitly highlights logging, audit readiness, evidence preservation, governance, and monitoring for enterprise AI workloads. [Microsoft...Architects | SharePoint]
+
+13. Event-Driven Communication
+Published Events
+Plain Text1IncidentCreated2 3IncidentResolved4 5IncidentUpdated6 7KnowledgeIndexed8 9ChangeCreated10 11ChangeApproved12 13TenantProvisioned14 15UserCreated16 17AnalysisCompletedShow more lines
+Consumers
+Plain Text1Worker Services2 3AI Services4 5Reporting Services6 7Notification ServicesShow more lines
+This allows the system to remain loosely coupled.
+
+14. Core API Dependency Map
+Plain Text1Incident Service2       │3       ├── Asset Service4       ├── Change Service5       ├── Knowledge Service6       └── AI Analysis Service7 8Change Service9       │10       ├── Asset Service11       └── Service Graph Service12 13Knowledge Service14       │15       └── Azure AI Search16 17AI Analysis Service18       │19       └── AI Orchestrator20 21Reporting Service22       │23       ├── Incident Service24       ├── Change Service25       └── Audit ServiceShow more lines
+
+15. Service Boundaries (Future Microservices)
+When scale demands decomposition:
+Can Become Independent Microservices
+Plain Text1Incident Service2 3Knowledge Service4 5Reporting Service6 7Tenant Service8 9AI ServiceShow more lines
+Should Stay Shared Longer
+Plain Text1User Service2 3Audit Service4 5RBAC ServiceShow more lines
+
+CTO Review
+The Core Application API contains 10 business components:
+Plain Text11. Incident Service22. Change Service33. Asset Service44. Service Graph Service55. Knowledge Service66. AI Analysis Service77. Reporting Service88. Tenant Service99. User & RBAC Service1010. Audit ServiceShow more lines
+This separation ensures:
+
+Multi-tenant SaaS readiness
+Enterprise governance
+AI independence
+Future microservice extraction
+Strong domain ownership
+Low coupling / high cohesion
+
+The architecture is consistent with enterprise patterns around service reliability engineering, AI-assisted ITSM, operational intelligence, governance, and secure AI controls.

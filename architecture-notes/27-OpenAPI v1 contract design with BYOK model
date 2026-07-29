@@ -1,0 +1,200 @@
+OpenAPI v1 Contract Design with BYOK Model
+1. Business Perspective
+Infrastructure Copilot must support enterprises that already have:
+
+Their own Azure OpenAI subscription
+Their own OpenAI Enterprise account
+Their own Anthropic account
+Their own AWS Bedrock account
+Their own GCP Vertex AI setup
+Their own security rules
+Their own compliance requirements
+Their own cost centers
+
+So we design Infrastructure Copilot as:
+
+A SaaS orchestration, investigation, RAG, and governance platform where the customer can bring their own AI provider credentials, model endpoint, or keyless identity integration.
+
+This gives us three commercial advantages:
+
+Lower SaaS operating cost because model inference cost can sit with the customer.
+Better enterprise trust because customers control their AI provider and data plane.
+Faster security approval because customers can use their existing cloud governance.
+
+Important distinction:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TermMeaning for Infrastructure CopilotBYOK for AI providerCustomer brings model provider credentials, endpoint, deployment name, or identity configurationCMK/BYOK for encryptionCustomer brings encryption keys through Azure Key Vault or cloud KMSKeyless modelCustomer authorizes Infrastructure Copilot through Entra ID / managed identity / workload identity instead of sharing static API keys
+Microsoft documentation says Azure OpenAI supports customer-managed keys, also called Bring Your Own Key, through Azure Key Vault for encryption control.  Microsoft also documents keyless Azure OpenAI access through Microsoft Entra ID and managed identity, noting that keyless authentication avoids storing account keys or connection strings. [learn.microsoft.com] [learn.microsoft.com]
+My recommendation: BYOK must support both API-key mode and keyless mode, but keyless should be the enterprise-preferred path.
+
+2. Technical Architecture
+API Contract Principles
+All APIs must be:
+Plain Text1RESTful2OpenAPI 3.13Versioned under /api/v14Tenant-aware5RBAC-protected6Auditable7Pagination-ready8Idempotency-ready9BYOK-awareShow more lines
+The OpenAPI Specification defines a language-agnostic interface description for HTTP APIs that lets humans and systems understand service capabilities without source code or network inspection.  OpenAPI supports security schemes such as API keys, HTTP bearer, OAuth 2.0, OpenID Connect, and mutual TLS. [spec.openapis.org] [learn.openapis.org]
+
+Core API Areas
+Plain Text1/auth2/tenants3/users4/incidents5/changes6/assets7/services8/knowledge9/copilot10/ai-providers11/rag12/audit13/usage14/integrationsShow more lines
+
+BYOK Architecture Decision
+Wrong BYOK Design
+Plain Text1Customer pastes API key2↓3We store plaintext key4↓5We call model directlyShow more lines
+No. Absolutely not. That is how you build a future breach notification.
+Correct BYOK Design
+Plain Text1Customer configures AI provider2↓3Infrastructure Copilot stores metadata in PostgreSQL4↓5Secret value is stored in Key Vault or customer vault reference6↓7AI Gateway resolves provider at runtime8↓9Request is routed through tenant-scoped model configuration10↓11Usage is logged per tenantShow more lines
+Azure Key Vault guidance says secrets are intended for sensitive application credentials such as API keys, passwords, connection strings, and access keys.  Microsoft also recommends managed identities as the best way to authenticate to Azure services when possible, while secrets require rotation when managed identity is not an option. [learn.microsoft.com] [microsoft.github.io]
+
+BYOK Modes
+Mode 1: Customer-Provided API Key
+Used for:
+Plain Text1OpenAI2Anthropic3Custom LLM gateway4Some Azure OpenAI setupsShow more lines
+We store:
+Plain Text1provider_type2endpoint_url3deployment_name4secret_reference5model_capabilitiesShow more lines
+We do not store:
+Plain Text1raw_api_keyShow more lines
+
+Mode 2: Azure OpenAI Keyless
+Used for enterprise Azure customers.
+Customer grants access using:
+Plain Text1Microsoft Entra ID2Managed Identity3RBACShow more lines
+Microsoft documents that Azure OpenAI can use Microsoft Entra ID authentication and role assignments such as Cognitive Services OpenAI User or Contributor instead of key-based authentication. [learn.microsoft.com]
+
+Mode 3: Customer-Managed Encryption Key
+Used for encryption governance.
+Azure OpenAI documentation says customer-managed keys provide flexibility to create, rotate, disable, revoke access controls, and audit encryption keys.  Azure AI Services customer-managed key guidance says the key vault must enable soft delete and purge protection, and the managed identity must have key permissions such as wrap key, unwrap key, and get. [learn.microsoft.com] [learn.microsoft.com]
+
+3. Security Considerations
+The internal Microsoft-Secure-AI--Technical-Guide-for-Architects frames secure AI as an enterprise control-plane problem involving identity, data governance, cloud posture, application security, policy enforcement, detection engineering, compliance, and operational resilience.  It also warns that AI systems can invoke identity tokens, query indexed content, retrieve enterprise data, call connectors, interact with APIs, and trigger agent behavior in one transaction, which is why identity governance and control boundaries matter. [Microsoft...Architects | SharePoint] [Microsoft...Architects | SharePoint]
+Mandatory Security Rules
+
+Never expose provider keys to frontend.
+Never store raw API keys in PostgreSQL.
+Store only secret_reference.
+Support customer-owned vault references later.
+Use tenant-scoped provider configuration.
+Every AI call must be logged.
+Every model response must be associated with tenant, user, provider, model, token usage, and cost.
+BYOK validation must test connectivity without storing plaintext secrets.
+Key rotation must be supported without downtime.
+Provider configuration changes must generate audit events.
+
+Azure Key Vault guidance recommends rotating secrets regularly and using tags for metadata such as rotation schedules, expiration dates, and ownership. [learn.microsoft.com]
+
+4. Scalability
+BYOK improves SaaS scalability because:
+
+Inference load can be distributed across customer-owned model providers.
+Enterprise customers can use their own rate limits and quotas.
+We avoid one shared OpenAI quota becoming the bottleneck.
+Customers can choose regional deployments.
+MSPs can map different customers to different model providers.
+
+But we still need a Model Gateway.
+Plain Text1Copilot API2   ↓3AI Gateway4   ↓5Tenant Provider Resolver6   ↓7Credential Resolver8   ↓9Model Client Factory10   ↓11Provider Adapter12   ↓13Azure OpenAI / OpenAI / Anthropic / Bedrock / VertexShow more lines
+The Cognizant® Intelligence Lab as a Service Offering Deck - for Jul22 references a hybrid model strategy across Azure OpenAI, Anthropic, and self-hosted options, plus guardrails, RBAC, workload identities, audit logging, multi-tenant isolation, and region pinning. [Cognizant®...for Jul22 | PowerPoint]
+
+5. Risks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RiskImpactMitigationCustomer enters invalid keyAI features failAdd /validate endpoint before activationKey expiresProduction outageRotation metadata and health checksProvider rate limitSlow AI responsesQueue, retry, fallback providerKey leaked through logsSecurity incidentSecret redaction middlewareCustomer blames us for model costCommercial conflictUsage reporting per provider/modelCross-tenant provider mix-upCatastrophic breachTenant-scoped provider resolver and testsRaw key stored accidentallyCompliance failureSecret scanning and DB constraintsCustomer lacks providerCannot use AISupport local/mock provider for dev and non-AI features
+
+6. Recommended Implementation
+Below is the OpenAPI v1 contract. This is intentionally API-first and BYOK-first.
+YAML1openapi: 3.1.02info:3  title: Infrastructure Copilot API4  version: 1.0.05  description: >6    Infrastructure Copilot is a multi-tenant AI-powered incident and change7    intelligence platform. This API supports BYOK AI provider configuration,8    incident investigation, RAG, RCA generation, auditability, and usage tracking.9 10servers:11  - url: https://api.infrastructurecopilot.com/api/v112    description: Production13  - url: https://sandbox-api.infrastructurecopilot.com/api/v114    description: Sandbox15 16security:17  - bearerAuth: []18 19tags:20  - name: Tenants21  - name: Users22  - name: AI Providers23  - name: Incidents24  - name: Changes25  - name: Knowledge26  - name: RAG27  - name: Copilot28  - name: Audit29  - name: Usage30  - name: Integrations31 32paths:33  /tenants:34    post:35      tags: [Tenants]36      summary: Create tenant37      operationId: createTenant38      security:39        - bearerAuth: [tenant.admin]40      requestBody:41        required: true42        content:43          application/json:44            schema:45              $ref: '#/components/schemas/CreateTenantRequest'46      responses:47        '201':48          description: Tenant created49          content:50            application/json:51              schema:52                $ref: '#/components/schemas/TenantResponse'53 54  /tenants/{tenantId}:55    get:56      tags: [Tenants]57      summary: Get tenant58      operationId: getTenant59      security:60        - bearerAuth: [tenant.read]61      parameters:62        - $ref: '#/components/parameters/TenantId'63      responses:64        '200':65          description: Tenant details66          content:67            application/json:68              schema:69                $ref: '#/components/schemas/TenantResponse'70 71  /ai-providers:72    get:73      tags: [AI Providers]74      summary: List configured AI providers for current tenant75      operationId: listAiProviders76      security:77        - bearerAuth: [ai.provider.read]78      parameters:79        - $ref: '#/components/parameters/TenantHeader'80      responses:81        '200':82          description: AI providers83          content:84            application/json:85              schema:86                $ref: '#/components/schemas/AiProviderListResponse'87 88    post:89      tags: [AI Providers]90      summary: Register BYOK AI provider91      operationId: createAiProvider92      description: >93        Registers a tenant-scoped AI provider. Raw API keys must never be stored94        in the application database. If apiKey authentication is used, the key95        must be written to a secure vault and only a secret reference is stored.96      security:97        - bearerAuth: [ai.provider.write]98      parameters:99        - $ref: '#/components/parameters/TenantHeader'100        - $ref: '#/components/parameters/IdempotencyKey'101      requestBody:102        required: true103        content:104          application/json:105            schema:106              $ref: '#/components/schemas/CreateAiProviderRequest'107      responses:108        '201':109          description: AI provider registered110          content:111            application/json:112              schema:113                $ref: '#/components/schemas/AiProviderResponse'114 115  /ai-providers/{providerId}:116    get:117      tags: [AI Providers]118      summary: Get AI provider configuration119      operationId: getAiProvider120      security:121        - bearerAuth: [ai.provider.read]122      parameters:123        - $ref: '#/components/parameters/TenantHeader'124        - $ref: '#/components/parameters/ProviderId'125      responses:126        '200':127          description: AI provider details128          content:129            application/json:130              schema:131                $ref: '#/components/schemas/AiProviderResponse'132 133    patch:134      tags: [AI Providers]135      summary: Update AI provider metadata136      operationId: updateAiProvider137      security:138        - bearerAuth: [ai.provider.write]139      parameters:140        - $ref: '#/components/parameters/TenantHeader'141        - $ref: '#/components/parameters/ProviderId'142      requestBody:143        required: true144        content:145          application/json:146            schema:147              $ref: '#/components/schemas/UpdateAiProviderRequest'148      responses:149        '200':150          description: AI provider updated151          content:152            application/json:153              schema:154                $ref: '#/components/schemas/AiProviderResponse'155 156    delete:157      tags: [AI Providers]158      summary: Disable AI provider159      operationId: disableAiProvider160      security:161        - bearerAuth: [ai.provider.write]162      parameters:163        - $ref: '#/components/parameters/TenantHeader'164        - $ref: '#/components/parameters/ProviderId'165      responses:166        '204':167          description: Provider disabled168 169  /ai-providers/{providerId}/secrets:170    put:171      tags: [AI Providers]172      summary: Set or rotate provider secret173      operationId: rotateAiProviderSecret174      description: >175        Accepts a provider credential only over TLS, writes it to the configured176        vault, and stores only a secret reference. The raw secret must never be177        returned by any API.178      security:179        - bearerAuth: [ai.provider.secret.write]180      parameters:181        - $ref: '#/components/parameters/TenantHeader'182        - $ref: '#/components/parameters/ProviderId'183        - $ref: '#/components/parameters/IdempotencyKey'184      requestBody:185        required: true186        content:187          application/json:188            schema:189              $ref: '#/components/schemas/RotateProviderSecretRequest'190      responses:191        '200':192          description: Secret rotated193          content:194            application/json:195              schema:196                $ref: '#/components/schemas/SecretRotationResponse'197 198  /ai-providers/{providerId}/validate:199    post:200      tags: [AI Providers]201      summary: Validate provider connectivity202      operationId: validateAiProvider203      security:204        - bearerAuth: [ai.provider.validate]205      parameters:206        - $ref: '#/components/parameters/TenantHeader'207        - $ref: '#/components/parameters/ProviderId'208      responses:209        '200':210          description: Validation result211          content:212            application/json:213              schema:214                $ref: '#/components/schemas/AiProviderValidationResponse'215 216  /ai-providers/{providerId}/models:217    get:218      tags: [AI Providers]219      summary: List models or deployments available for provider220      operationId: listProviderModels221      security:222        - bearerAuth: [ai.provider.read]223      parameters:224        - $ref: '#/components/parameters/TenantHeader'225        - $ref: '#/components/parameters/ProviderId'226      responses:227        '200':228          description: Provider models229          content:230            application/json:231              schema:232                $ref: '#/components/schemas/ProviderModelsResponse'233 234  /copilot/chat:235    post:236      tags: [Copilot]237      summary: Send chat request to Infrastructure Copilot238      operationId: chatWithCopilot239      security:240        - bearerAuth: [copilot.chat]241      parameters:242        - $ref: '#/components/parameters/TenantHeader'243        - $ref: '#/components/parameters/IdempotencyKey'244      requestBody:245        required: true246        content:247          application/json:248            schema:249              $ref: '#/components/schemas/CopilotChatRequest'250      responses:251        '200':252          description: Copilot response253          content:254            application/json:255              schema:256                $ref: '#/components/schemas/CopilotChatResponse'257 258  /incidents:259    get:260      tags: [Incidents]261      summary: List incidents262      operationId: listIncidents263      security:264        - bearerAuth: [incident.read]265      parameters:266        - $ref: '#/components/parameters/TenantHeader'267        - $ref: '#/components/parameters/PageToken'268        - $ref: '#/components/parameters/PageSize'269      responses:270        '200':271          description: Incident list272          content:273            application/json:274              schema:275                $ref: '#/components/schemas/IncidentListResponse'276 277    post:278      tags: [Incidents]279      summary: Create incident280      operationId: createIncident281      security:282        - bearerAuth: [incident.write]283      parameters:284        - $ref: '#/components/parameters/TenantHeader'285        - $ref: '#/components/parameters/IdempotencyKey'286      requestBody:287        required: true288        content:289          application/json:290            schema:291              $ref: '#/components/schemas/CreateIncidentRequest'292      responses:293        '201':294          description: Incident created295          content:296            application/json:297              schema:298                $ref: '#/components/schemas/IncidentResponse'299 300  /incidents/{incidentId}/similar:301    post:302      tags: [Incidents]303      summary: Find similar incidents304      operationId: findSimilarIncidents305      security:306        - bearerAuth: [incident.analyze]307      parameters:308        - $ref: '#/components/parameters/TenantHeader'309        - $ref: '#/components/parameters/IncidentId'310      responses:311        '200':312          description: Similar incidents313          content:314            application/json:315              schema:316                $ref: '#/components/schemas/SimilarIncidentResponse'317 318  /incidents/{incidentId}/rca-draft:319    post:320      tags: [Incidents]321      summary: Generate RCA draft322      operationId: generateRcaDraft323      security:324        - bearerAuth: [incident.analyze]325      parameters:326        - $ref: '#/components/parameters/TenantHeader'327        - $ref: '#/components/parameters/IncidentId'328        - $ref: '#/components/parameters/IdempotencyKey'329      requestBody:330        required: false331        content:332          application/json:333            schema:334              $ref: '#/components/schemas/RcaDraftRequest'335      responses:336        '202':337          description: RCA generation accepted338          content:339            application/json:340              schema:341                $ref: '#/components/schemas/AsyncJobResponse'342 343  /changes/{changeId}/risk-analysis:344    post:345      tags: [Changes]346      summary: Analyze change risk347      operationId: analyzeChangeRisk348      security:349        - bearerAuth: [change.analyze]350      parameters:351        - $ref: '#/components/parameters/TenantHeader'352        - $ref: '#/components/parameters/ChangeId'353      responses:354        '200':355          description: Change risk analysis356          content:357            application/json:358              schema:359                $ref: '#/components/schemas/ChangeRiskAnalysisResponse'360 361  /knowledge/documents:362    post:363      tags: [Knowledge]364      summary: Upload knowledge document metadata365      operationId: createKnowledgeDocument366      security:367        - bearerAuth: [knowledge.write]368      parameters:369        - $ref: '#/components/parameters/TenantHeader'370        - $ref: '#/components/parameters/IdempotencyKey'371      requestBody:372        required: true373        content:374          application/json:375            schema:376              $ref: '#/components/schemas/CreateKnowledgeDocumentRequest'377      responses:378        '201':379          description: Knowledge document registered380          content:381            application/json:382              schema:383                $ref: '#/components/schemas/KnowledgeDocumentResponse'384 385  /rag/query:386    post:387      tags: [RAG]388      summary: Query tenant-scoped RAG knowledge389      operationId: queryRag390      security:391        - bearerAuth: [rag.query]392      parameters:393        - $ref: '#/components/parameters/TenantHeader'394      requestBody:395        required: true396        content:397          application/json:398            schema:399              $ref: '#/components/schemas/RagQueryRequest'400      responses:401        '200':402          description: RAG query results403          content:404            application/json:405              schema:406                $ref: '#/components/schemas/RagQueryResponse'407 408  /usage/ai:409    get:410      tags: [Usage]411      summary: Get AI usage for tenant412      operationId: getAiUsage413      security:414        - bearerAuth: [usage.read]415      parameters:416        - $ref: '#/components/parameters/TenantHeader'417      responses:418        '200':419          description: AI usage420          content:421            application/json:422              schema:423                $ref: '#/components/schemas/AiUsageResponse'424 425  /audit/events:426    get:427      tags: [Audit]428      summary: Query audit events429      operationId: listAuditEvents430      security:431        - bearerAuth: [audit.read]432      parameters:433        - $ref: '#/components/parameters/TenantHeader'434        - $ref: '#/components/parameters/PageToken'435        - $ref: '#/components/parameters/PageSize'436      responses:437        '200':438          description: Audit events439          content:440            application/json:441              schema:442                $ref: '#/components/schemas/AuditEventListResponse'443 444components:445  securitySchemes:446    bearerAuth:447      type: oauth2448      description: OAuth2 / OIDC access token issued by enterprise identity provider.449      flows:450        authorizationCode:451          authorizationUrl: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize452          tokenUrl: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token453          scopes:454            tenant.read: Read tenant details455            tenant.admin: Manage tenant456            incident.read: Read incidents457            incident.write: Write incidents458            incident.analyze: Analyze incidents with AI459            change.analyze: Analyze change risk460            knowledge.write: Manage knowledge461            rag.query: Query RAG knowledge462            copilot.chat: Use Copilot chat463            ai.provider.read: Read AI provider settings464            ai.provider.write: Manage AI provider settings465            ai.provider.secret.write: Rotate provider secrets466            ai.provider.validate: Validate provider connection467            audit.read: Read audit events468            usage.read: Read usage metrics469 470  parameters:471    TenantHeader:472      name: X-Tenant-Id473      in: header474      required: true475      schema:476        type: string477        format: uuid478 479    IdempotencyKey:480      name: Idempotency-Key481      in: header482      required: false483      schema:484        type: string485        maxLength: 120486 487    TenantId:488      name: tenantId489      in: path490      required: true491      schema:492        type: string493        format: uuid494 495    ProviderId:496      name: providerId497      in: path498      required: true499      schema:500        type: string501        format: uuid502 503    IncidentId:504      name: incidentId505      in: path506      required: true507      schema:508        type: string509        format: uuid510 511    ChangeId:512      name: changeId513      in: path514      required: true515      schema:516        type: string517        format: uuid518 519    PageToken:520      name: pageToken521      in: query522      required: false523      schema:524        type: string525 526    PageSize:527      name: pageSize528      in: query529      required: false530      schema:531        type: integer532        minimum: 1533        maximum: 200534        default: 50535 536  schemas:537    CreateTenantRequest:538      type: object539      required: [name, tenantCode, planCode]540      properties:541        name:542          type: string543        tenantCode:544          type: string545        planCode:546          type: string547          enum: [starter, professional, msp, enterprise]548        primaryRegion:549          type: string550          example: eastus551 552    TenantResponse:553      type: object554      properties:555        id:556          type: string557          format: uuid558        tenantCode:559          type: string560        name:561          type: string562        planCode:563          type: string564        status:565          type: string566        primaryRegion:567          type: string568 569    CreateAiProviderRequest:570      type: object571      required: [providerType, authMode, displayName]572      properties:573        displayName:574          type: string575          example: Customer Azure OpenAI East US576        providerType:577          type: string578          enum: [azure_openai, openai, anthropic, aws_bedrock, gcp_vertex, local, mock]579        authMode:580          type: string581          enum: [api_key, entra_id, workload_identity, customer_vault_reference, none]582        endpointUrl:583          type: string584          format: uri585        deploymentName:586          type: string587        apiVersion:588          type: string589        defaultModel:590          type: string591        secretReference:592          type: string593          description: Reference to secret in vault, never raw secret.594        customerVaultReference:595          $ref: '#/components/schemas/CustomerVaultReference'596        entraConfig:597          $ref: '#/components/schemas/EntraAiProviderConfig'598        capabilities:599          type: array600          items:601            type: string602            enum: [chat, embeddings, rerank, vision, tool_calling]603 604    UpdateAiProviderRequest:605      type: object606      properties:607        displayName:608          type: string609        status:610          type: string611          enum: [active, disabled, validation_failed]612        defaultModel:613          type: string614        deploymentName:615          type: string616        apiVersion:617          type: string618        capabilities:619          type: array620          items:621            type: string622 623    CustomerVaultReference:624      type: object625      properties:626        vaultProvider:627          type: string628          enum: [azure_key_vault, aws_kms, gcp_secret_manager]629        vaultUri:630          type: string631        secretName:632          type: string633        secretVersion:634          type: string635 636    EntraAiProviderConfig:637      type: object638      properties:639        azureTenantId:640          type: string641        subscriptionId:642          type: string643        resourceGroup:644          type: string645        resourceName:646          type: string647        managedIdentityClientId:648          type: string649        requiredRole:650          type: string651          example: Cognitive Services OpenAI User652 653    AiProviderResponse:654      type: object655      properties:656        id:657          type: string658          format: uuid659        tenantId:660          type: string661          format: uuid662        displayName:663          type: string664        providerType:665          type: string666        authMode:667          type: string668        endpointUrl:669          type: string670        defaultModel:671          type: string672        deploymentName:673          type: string674        status:675          type: string676        secretConfigured:677          type: boolean678        lastValidatedAt:679          type: string680          format: date-time681 682    AiProviderListResponse:683      type: object684      properties:685        items:686          type: array687          items:688            $ref: '#/components/schemas/AiProviderResponse'689 690    RotateProviderSecretRequest:691      type: object692      required: [secretValue]693      properties:694        secretValue:695          type: string696          writeOnly: true697        expiresAt:698          type: string699          format: date-time700        rotationPolicy:701          type: string702          enum: [manual, periodic, customer_managed]703 704    SecretRotationResponse:705      type: object706      properties:707        providerId:708          type: string709          format: uuid710        secretReference:711          type: string712        rotatedAt:713          type: string714          format: date-time715        expiresAt:716          type: string717          format: date-time718 719    AiProviderValidationResponse:720      type: object721      properties:722        providerId:723          type: string724          format: uuid725        status:726          type: string727          enum: [valid, invalid, degraded]728        latencyMs:729          type: integer730        message:731          type: string732 733    ProviderModelsResponse:734      type: object735      properties:736        providerId:737          type: string738          format: uuid739        models:740          type: array741          items:742            type: object743            properties:744              modelName:745                type: string746              capabilities:747                type: array748                items:749                  type: string750 751    CopilotChatRequest:752      type: object753      required: [message]754      properties:755        conversationId:756          type: string757          format: uuid758        message:759          type: string760        entityContext:761          type: object762          properties:763            entityType:764              type: string765              enum: [incident, change, service, asset, none]766            entityId:767              type: string768              format: uuid769        aiProviderId:770          type: string771          format: uuid772          description: Optional tenant AI provider override.773        responseFormat:774          type: string775          enum: [chat, executive_summary, rca, troubleshooting_steps]776          default: chat777 778    CopilotChatResponse:779      type: object780      properties:781        conversationId:782          type: string783          format: uuid784        interactionId:785          type: string786          format: uuid787        answer:788          type: string789        confidenceScore:790          type: number791          format: float792        citations:793          type: array794          items:795            $ref: '#/components/schemas/Citation'796        usage:797          $ref: '#/components/schemas/AiUsageSummary'798 799    Citation:800      type: object801      properties:802        sourceType:803          type: string804        sourceId:805          type: string806        title:807          type: string808        excerpt:809          type: string810        relevanceScore:811          type: number812          format: float813 814    CreateIncidentRequest:815      type: object816      required: [title, sourceSystem, externalId]817      properties:818        externalId:819          type: string820        sourceSystem:821          type: string822        title:823          type: string824        description:825          type: string826        severity:827          type: string828        priority:829          type: string830        status:831          type: string832        assignmentGroup:833          type: string834        openedAt:835          type: string836          format: date-time837 838    IncidentResponse:839      type: object840      properties:841        id:842          type: string843          format: uuid844        externalId:845          type: string846        title:847          type: string848        severity:849          type: string850        priority:851          type: string852        status:853          type: string854 855    IncidentListResponse:856      type: object857      properties:858        items:859          type: array860          items:861            $ref: '#/components/schemas/IncidentResponse'862        nextPageToken:863          type: string864 865    SimilarIncidentResponse:866      type: object867      properties:868        incidentId:869          type: string870          format: uuid871        similarIncidents:872          type: array873          items:874            type: object875            properties:876              incident:877                $ref: '#/components/schemas/IncidentResponse'878              similarityScore:879                type: number880                format: float881              reason:882                type: string883 884    RcaDraftRequest:885      type: object886      properties:887        includeTimeline:888          type: boolean889          default: true890        includePreventiveActions:891          type: boolean892          default: true893        aiProviderId:894          type: string895          format: uuid896 897    AsyncJobResponse:898      type: object899      properties:900        jobId:901          type: string902          format: uuid903        status:904          type: string905          enum: [queued, running, completed, failed]906 907    ChangeRiskAnalysisResponse:908      type: object909      properties:910        changeId:911          type: string912          format: uuid913        riskScore:914          type: number915          format: float916        riskLevel:917          type: string918        blastRadius:919          type: string920        recommendations:921          type: array922          items:923            type: string924 925    CreateKnowledgeDocumentRequest:926      type: object927      required: [title, sourceType]928      properties:929        title:930          type: string931        sourceType:932          type: string933        category:934          type: string935        storageUri:936          type: string937        aclMetadata:938          type: object939 940    KnowledgeDocumentResponse:941      type: object942      properties:943        id:944          type: string945          format: uuid946        title:947          type: string948        status:949          type: string950 951    RagQueryRequest:952      type: object953      required: [query]954      properties:955        query:956          type: string957        filters:958          type: object959        maxResults:960          type: integer961          default: 10962        aiProviderId:963          type: string964          format: uuid965 966    RagQueryResponse:967      type: object968      properties:969        results:970          type: array971          items:972            $ref: '#/components/schemas/Citation'973 974    AiUsageSummary:975      type: object976      properties:977        providerId:978          type: string979          format: uuid980        modelName:981          type: string982        promptTokens:983          type: integer984        completionTokens:985          type: integer986        totalTokens:987          type: integer988        estimatedCostUsd:989          type: number990 991    AiUsageResponse:992      type: object993      properties:994        tenantId:995          type: string996          format: uuid997        usage:998          type: array999          items:1000            $ref: '#/components/schemas/AiUsageSummary'1001 1002    AuditEventListResponse:1003      type: object1004      properties:1005        items:1006          type: array1007          items:1008            type: object1009            properties:1010              id:1011                type: string1012                format: uuid1013              action:1014                type: string1015              resourceType:1016                type: string1017              resourceId:1018                type: string1019              createdAt:1020                type: string1021                format: date-time1022        nextPageToken:1023          type: string1024 1025    ErrorResponse:1026      type: object1027      properties:1028        errorCode:1029          type: string1030        message:1031          type: string1032        correlationId:1033          type: stringShow more lines
+
+BYOK Provider Registration Examples
+Example 1: Azure OpenAI with API Key
+JSON1{2  "displayName": "Customer Azure OpenAI East US",3  "providerType": "azure_openai",4  "authMode": "api_key",5  "endpointUrl": "https://customer-resource.openai.azure.com",6  "deploymentName": "gpt-4o-prod",7  "apiVersion": "2024-10-21",8  "defaultModel": "gpt-4o",9  "capabilities": ["chat", "embeddings", "tool_calling"]10}Show more lines
+Then secret rotation call:
+JSON1{2  "secretValue": "CUSTOMER_PROVIDED_SECRET_VALUE",3  "expiresAt": "2026-12-31T23:59:59Z",4  "rotationPolicy": "manual"5}Show more lines
+We return only:
+JSON1{2  "providerId": "8d4b0e62-b6e5-4a68-8b92-6a912dd4f3c7",3  "secretReference": "kv://infra-copilot/prod/tenant-x/provider-y/key",4  "rotatedAt": "2026-07-30T04:00:00Z",5  "expiresAt": "2026-12-31T23:59:59Z"6}Show more lines
+
+Example 2: Azure OpenAI Keyless
+JSON1{2  "displayName": "ABC Bank Azure OpenAI Keyless",3  "providerType": "azure_openai",4  "authMode": "entra_id",5  "endpointUrl": "https://abc-openai.openai.azure.com",6  "deploymentName": "gpt-4o-prod",7  "apiVersion": "2024-10-21",8  "defaultModel": "gpt-4o",9  "entraConfig": {10    "azureTenantId": "customer-tenant-id",11    "subscriptionId": "customer-subscription-id",12    "resourceGroup": "rg-ai-prod",13    "resourceName": "abc-openai",14    "managedIdentityClientId": "managed-identity-client-id",15    "requiredRole": "Cognitive Services OpenAI User"16  },17  "capabilities": ["chat", "embeddings", "tool_calling"]18}Show more lines
+This aligns with Microsoft’s keyless Azure OpenAI guidance where Azure Identity credentials and Entra-based roles are used instead of static keys. [learn.microsoft.com], [learn.microsoft.com]
+
+7. Future Improvements
+v1.1
+Add:
+Plain Text1/ai-providers/{providerId}/failover2/ai-providers/{providerId}/rate-limits3/ai-providers/{providerId}/cost-policyShow more lines
+v1.2
+Add:
+Plain Text1Customer-owned vault integration2Provider health scoring3Model fallback rules4Per-use-case model routingShow more lines
+v2
+Add:
+Plain Text1AWS Bedrock IAM role federation2GCP Vertex workload identity federation3Private model endpoints4Self-hosted model gateway5Enterprise EKM integrationShow more lines
+OpenAI’s Enterprise Key Management documentation says external KMS-backed encryption can use AWS KMS, GCP, and Azure Key Vault for Bring Your Own Key encryption scenarios. [help.openai.com]
+
+Final Recommendation
+For Infrastructure Copilot, implement BYOK like this:
+Plain Text1Default MVP:2Customer BYOK through API key stored in Azure Key Vault3 4Enterprise MVP:5Azure OpenAI keyless via Entra ID / Managed Identity6 7Future:8Customer-owned vault reference + external KMS/EKMShow more lines
+Do not make Infrastructure Copilot dependent on your personal API key or a shared platform key. That would be fine for a weekend demo, but poison for a product enterprises will buy.

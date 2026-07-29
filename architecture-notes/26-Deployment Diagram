@@ -1,0 +1,217 @@
+1. Business Perspective
+Infrastructure Copilot is a:
+
+Requirements:
+
+1000+ tenants
+Enterprise SSO
+RAG
+AI services
+MSP support
+Audit compliance
+High availability
+AI governance
+
+Deployment must support:
+Plain Text1Security First2 3Cloud Native4 5Horizontal Scalability6 7Zero Trust8 9AI GovernanceShow more lines
+
+2. Production Azure Deployment Diagram
+Plain Text1┌─────────────────────────────────────────────┐2│                 INTERNET                    │3└─────────────────┬───────────────────────────┘4                  │5                  ▼6 7┌─────────────────────────────────────────────┐8│          Azure Front Door Premium           │9│                                             │10│ Global Routing                              │11│ WAF                                         │12│ DDoS Protection                             │13└─────────────────┬───────────────────────────┘14                  │15                  ▼16 17┌─────────────────────────────────────────────┐18│          API Management (APIM)              │19│                                             │20│ API Security                                │21│ Versioning                                  │22│ Rate Limiting                               │23│ Subscription Management                     │24└─────────────────┬───────────────────────────┘25                  │26                  ▼27 28═══════════════════════════════════════════════29                 AKS CLUSTER30═══════════════════════════════════════════════31 32┌─────────────────────────────────────────────┐33│ AKS System Node Pool                        │34│                                             │35│ NGINX Ingress                               │36│ Cert Manager                                │37│ OpenTelemetry                               │38└─────────────────────────────────────────────┘39 40 41┌─────────────────────────────────────────────┐42│ AKS Application Node Pool                   │43│                                             │44│ Frontend Pods                               │45│ Core API Pods                               │46│ Auth Pods                                   │47│ Reporting Pods                              │48└─────────────────────────────────────────────┘49 50 51┌─────────────────────────────────────────────┐52│ AKS AI Node Pool                            │53│                                             │54│ AI Orchestrator Pods                        │55│ RAG Pods                                    │56│ Prompt Engine                               │57│ Citation Engine                             │58└─────────────────────────────────────────────┘59 60 61┌─────────────────────────────────────────────┐62│ AKS Worker Node Pool                        │63│                                             │64│ ServiceNow Sync                             │65│ Jira Sync                                   │66│ Knowledge Ingestion                         │67│ Embedding Workers                           │68│ Analytics Workers                           │69└─────────────────────────────────────────────┘70 71 72                  │73                  ▼74 75═══════════════════════════════════════════════76             DATA PLATFORM77═══════════════════════════════════════════════78 79Azure Database for PostgreSQL80 81Azure AI Search82 83Azure Cache for Redis84 85Azure Service Bus86 87Azure Blob Storage88 89Azure Key Vault90 91═══════════════════════════════════════════════92              AI SERVICES93═══════════════════════════════════════════════94 95Azure OpenAI96 97GPT Models98 99Embedding Models100 101═══════════════════════════════════════════════102          MONITORING & SECURITY103═══════════════════════════════════════════════104 105Application Insights106 107Azure Monitor108 109Log Analytics110 111Microsoft Sentinel112 113Microsoft Defender114 115═══════════════════════════════════════════════116           EXTERNAL SYSTEMS117═══════════════════════════════════════════════118 119ServiceNow120 121Jira122 123Confluence124 125SharePoint126 127Azure128 129AWS130 131GCP132 133VMware134 135KubernetesShow more lines
+
+3. AKS Namespace Design
+Production Namespace Layout
+Plain Text1prod-system2 3prod-api4 5prod-ai6 7prod-workers8 9prod-monitoring10 Show more lines
+
+Why?
+Separates:
+Plain Text1Application Traffic2 3AI Traffic4 5Background Jobs6 7Observability8``Show more lines
+Reduces blast radius.
+
+4. AKS Node Pool Design
+System Node Pool
+Purpose:
+Plain Text1Cluster OperationsShow more lines
+Hosts:
+Plain Text1Ingress Controller2 3Cert Manager4 5Metrics Server6 7OpenTelemetry AgentsShow more lines
+Autoscaling:
+Plain Text12 → 5 NodesShow more lines
+
+Application Node Pool
+Purpose:
+Plain Text1Business APIsShow more lines
+Hosts:
+Plain Text1Frontend2 3Core API4 5Auth Service6 7Reporting ServiceShow more lines
+Autoscaling:
+Plain Text13 → 30 NodesShow more lines
+Triggers:
+Plain Text1CPU2 3Memory4 5Requests/secShow more lines
+
+AI Node Pool
+Purpose:
+Plain Text1AI ProcessingShow more lines
+Hosts:
+Plain Text1AI Orchestrator2 3Prompt Engine4 5Context Builder6 7Citation Builder8 9RAG ServiceShow more lines
+Autoscaling:
+Plain Text12 → 50 NodesShow more lines
+Scale Trigger:
+Plain Text1AI Request VolumeShow more lines
+
+Worker Node Pool
+Purpose:
+Plain Text1Background ProcessingShow more lines
+Hosts:
+Plain Text1Ingestion2 3Synchronization4 5Embedding Generation6 7Analytics JobsShow more lines
+Scale Trigger:
+Plain Text1Queue DepthShow more lines
+This aligns well with enterprise AI deployment patterns where orchestration, retrieval, integrations, and operational processing are separated from user-facing workloads. [Claude vs...ually Use? | SharePoint], [AI Quality...ge Program | SharePoint]
+
+5. Ingress Architecture
+Flow
+Plain Text1Internet2    ↓3Azure Front Door4    ↓5WAF Rules6    ↓7API Management8    ↓9NGINX Ingress10    ↓11Kubernetes Services12    ↓13Pods14``Show more lines
+
+Why Azure Front Door?
+Provides:
+Plain Text1Global Routing2 3Geo Failover4 5SSL Offloading6 7Web Application FirewallShow more lines
+
+6. Network Architecture
+Virtual Network
+Plain Text1VNET2 3├── AKS Subnet4 5├── PostgreSQL Subnet6 7├── Private Endpoint Subnet8 9├── Monitoring SubnetShow more lines
+
+Private Endpoints
+Mandatory for:
+Plain Text1PostgreSQL2 3Azure OpenAI4 5AI Search6 7Blob Storage8 9Redis10 11Service Bus12 13Key VaultShow more lines
+The enterprise secure AI guidance explicitly recommends proper network isolation, secure baselines, logging, governance, and monitoring for Azure AI workloads.
+
+7. Authentication Flow
+Plain Text1User2 ↓3 4Microsoft Entra ID5 6 ↓7 8JWT Token9 10 ↓11 12API Management13 14 ↓15 16Core API17 18 ↓19 20Tenant Context Resolution21 22 ↓23 24AuthorizationShow more lines
+
+Why?
+Enterprise customers require:
+Plain Text1SSO2 3MFA4 5Conditional Access6 7RBACShow more lines
+Identity governance is repeatedly emphasized in enterprise AI guidance as a foundational control plane. [AI Quality...ge Program | SharePoint]
+
+8. Data Layer Deployment
+PostgreSQL
+Primary Store:
+Plain Text1Incidents2 3Changes4 5Assets6 7Users8 9Tenants10 11Audit LogsShow more lines
+Deployment:
+Plain Text1Azure Database for PostgreSQL2Flexible ServerShow more lines
+High Availability:
+Plain Text1Zone RedundantShow more lines
+
+Redis
+Used For:
+Plain Text1Session Cache2 3Permission Cache4 5Request CacheShow more lines
+Deployment:
+Plain Text1Premium TierShow more lines
+
+Service Bus
+Used For:
+Plain Text1Event Processing2 3Async Workloads4 5IntegrationsShow more lines
+
+Blob Storage
+Stores:
+Plain Text1Documents2 3Knowledge Sources4 5Export Files6 7AttachmentsShow more lines
+
+9. Azure AI Search Deployment
+Purpose
+Store searchable knowledge.
+Contains:
+Plain Text1Runbooks2 3KB Articles4 5CMDB Context6 7Historical RCA8 9Incident SummariesShow more lines
+Supports:
+Plain Text1Vector Search2 3Hybrid Search4 5Semantic SearchShow more lines
+Enterprise RAG guidance and Azure AI Search multitenant guidance highlight retrieval, indexing, permission-aware search, and multitenant isolation. [medium.com], [thomasmaurer.ch]
+
+10. Azure OpenAI Deployment
+Usage
+Only through:
+Plain Text1AI OrchestratorShow more lines
+Never:
+Plain Text1Frontend → LLMShow more lines
+Never:
+Plain Text1API → LLM DirectShow more lines
+Flow:
+Plain Text1User2 ↓3AI Orchestrator4 ↓5Context Builder6 ↓7RAG Retrieval8 ↓9Azure OpenAIShow more lines
+This follows the orchestrator pattern described in enterprise RAG architecture guidance. [medium.com]
+
+11. Observability Deployment
+OpenTelemetry
+Installed across:
+Plain Text1Frontend2 3API4 5AI Services6 7WorkersShow more lines
+
+Application Insights
+Captures:
+Plain Text1Request Tracing2 3Dependency Calls4 5FailuresShow more lines
+
+Azure Monitor
+Tracks:
+Plain Text1AKS2 3Node Pools4 5ResourcesShow more lines
+
+Microsoft Sentinel
+Receives:
+Plain Text1Security Logs2 3Audit Events4 5AI Safety EventsShow more lines
+The secure AI guidance recommends AI telemetry integration into existing SOC operations and Sentinel workflows.
+
+12. Security Deployment
+Azure Key Vault
+Stores:
+Plain Text1API Keys2 3Secrets4 5Client Credentials6 7CertificatesShow more lines
+
+Managed Identity
+Used for:
+Plain Text1AKS → PostgreSQL2 3AKS → OpenAI4 5AKS → AI Search6 7AKS → Blob StorageShow more lines
+No embedded credentials.
+
+Defender for Cloud
+Monitors:
+Plain Text1Containers2 3PostgreSQL4 5Storage6 7AKSShow more lines
+
+13. Disaster Recovery Architecture
+Regional Topology
+Plain Text1Primary Region2 3East US4 5      │6 7      ▼8 9Secondary Region10 11Central USShow more lines
+
+Replication
+Plain Text1PostgreSQL Read Replica2 3Blob Replication4 5Search Index Backup6 7Key Vault BackupShow more lines
+
+14. Production Scaling Targets
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ComponentScale TargetTenants1,000+Users100,000+IncidentsMillionsDocumentsMillionsAI RequestsMillions/monthIntegrationsThousands
+
+Executive CTO Summary
+Production Technology Stack
+Plain Text1Frontend2────────3React4TypeScript5 6Gateway7────────8Azure Front Door9Azure API Management10 11Compute12────────13Azure Kubernetes Service14 15Database16────────17Azure PostgreSQL18 19Search20────────21Azure AI Search22 23Cache24────────25Redis26 27Queue28────────29Azure Service Bus30 31Storage32────────33Azure Blob Storage34 35AI36────────37Azure OpenAI38 39Security40────────41Entra ID42Key Vault43Defender44Sentinel45 46Observability47────────48OpenTelemetry49Azure Monitor50Application Insights51GrafanaShow more lines
+Architecture Principle
+Plain Text1Users2 ↓3API Layer4 ↓5Business Services6 ↓7AI Orchestration8 ↓9RAG10 ↓11LLM12 13Everything Audited14Everything Observable15Everything Tenant IsolatedShow more lines
+This deployment architecture is aligned with the themes found in enterprise AI guidance around secure AI, governance, observability, identity controls, AI orchestration, RAG-based retrieval, and scalable multi-tenant AI platforms.

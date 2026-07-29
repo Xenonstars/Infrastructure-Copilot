@@ -1,0 +1,297 @@
+AI Orchestration Specification
+Infrastructure Copilot v1.0
+
+1. Business Perspective
+The AI Orchestration layer is the decision engine of Infrastructure Copilot. It converts a user’s operational question into a controlled workflow across identity, permissions, retrieval, tools, model selection, validation, citations, audit logging, and cost tracking.
+The Infra Copilot-PRD defines Infrastructure Copilot as a multi-tenant AI-powered Infrastructure Intelligence Platform designed to reduce MTTR using retrieval, incident correlation, historical pattern matching, change analysis, knowledge retrieval, and guided troubleshooting. [Infra Copilot-PRD | Outlook]
+Your earlier Discussion on Infrastructure Copilot architecture artifacts explicitly listed AI Orchestration Specification as artifact #10 after Domain Model, Database Schema, C4 diagrams, OpenAPI, Tenant Isolation Strategy, and RAG Architecture Specification. [Mitra, Ankit in chat | Teams]
+What AI Orchestration must achieve
+Infrastructure Copilot must help users ask:
+Plain Text1What changed?2What is impacted?3Have we seen this before?4What should I check next?5Which team owns this?6What caused similar incidents?7What runbook should I follow?8What update should I send?Show more lines
+These question types are explicitly listed in Infra Copilot-PRD. [Infra Copilot-PRD | Outlook]
+CTO challenge
+Do not build orchestration as:
+Plain Text1User prompt → LLM → AnswerShow more lines
+That is a toy.
+For Infrastructure Copilot, orchestration must be:
+
+This is consistent with How Microsoft Ships AI Agents at Enterprise Scale, which states that production AI depends on the system around the model, including runtime orchestration, tool integrations, context retrieval, identity and access controls, guardrails, evaluation, monitoring, observability, CI/CD, and deployment pipelines. [How Micros...run thous | Viva Engage]
+
+2. Technical Architecture
+2.1 Orchestration Pattern Choice
+Recommended pattern for v1
+
+Do not start with full multi-agent autonomy.
+AI Agent Orchestration Patterns - Azure Architecture Center says architects should use the lowest level of complexity that reliably meets requirements, because each level of agent architecture introduces coordination overhead, latency, and cost. It also says a single agent with tools is often the right default for enterprise use cases and is simpler to debug and test than multiagent setups. [learn.microsoft.com]
+Why not full multi-agent in v1?
+Multiagent orchestration is useful when a single agent cannot reliably handle the problem due to prompt complexity, tool overload, or security requirements, but it adds coordination overhead, latency, and failure modes. [learn.microsoft.com]
+So v1 should be:
+Plain Text1Controlled Orchestrator2Specialized internal tools3Strict policy engine4No autonomous production changes5`Show more lines
+Future versions can introduce specialized agents.
+
+2.2 AI Orchestrator High-Level Flow
+Plain Text1User Request2   ↓3Request Controller4   ↓5Tenant Resolver6   ↓7Identity & RBAC Evaluator8   ↓9Intent Classifier10   ↓11Risk Classifier12   ↓13Tool Planner14   ↓15Retrieval Planner16   ↓17RAG Service18   ↓19Context Builder20   ↓21Prompt Builder22   ↓23Model Gateway24   ↓25LLM / BYOK Provider26   ↓27Output Validator28   ↓29Citation Builder30   ↓31Policy Enforcement32   ↓33Audit Logger34   ↓35Response Formatter36   ↓37UserShow more lines
+How Microsoft Ships AI Agents at Enterprise Scale states that retrieval is evolving into a specialized agent responsible for finding context, validating sources, curating information, and feeding downstream agents. [How Micros...run thous | Viva Engage]
+
+2.3 AI Orchestrator Components
+Plain Text1AI Orchestrator Service2├── Request Controller3├── Tenant Resolver4├── Identity & RBAC Evaluator5├── Intent Classifier6├── Risk Classifier7├── Tool Planner8├── Retrieval Planner9├── Context Builder10├── Prompt Builder11├── Model Gateway12├── Guardrail Engine13├── Output Validator14├── Citation Builder15├── Response Formatter16├── Evaluation Logger17├── Cost Tracker18└── Audit LoggerShow more lines
+
+2.4 Component Responsibilities
+A. Request Controller
+Receives all AI-related requests.
+Supported request types:
+Plain Text1Incident investigation2Similar incident search3RCA draft generation4Change risk analysis5Runbook lookup6Executive summary7General operational questionShow more lines
+The older Discussion on TJX OpsMind AI described capabilities including natural-language understanding, instant answers based on a knowledge base, guided diagnostics, documentation/resource referencing, intelligent triage/routing, and contextual information gathering. [Mitra, Ankit in chat | Teams]
+
+B. Tenant Resolver
+Resolves:
+Plain Text1tenant_id2user_id3subscription_plan4region5enabled_features6allowed_ai_providerShow more lines
+This is non-negotiable because all downstream retrieval, model use, cache access, audit, and BYOK routing must be tenant-scoped.
+
+C. Identity & RBAC Evaluator
+Determines:
+Plain Text1Can this user ask this question?2Can this user access this incident?3Can this user retrieve this runbook?4Can this user use this AI provider?5Can this user generate an RCA?Show more lines
+How Microsoft Ships AI Agents at Enterprise Scale says agents need identity, permissions, responsibilities, and auditability. [How Micros...run thous | Viva Engage]
+
+D. Intent Classifier
+Classifies the request into a product intent.
+Plain Text1INCIDENT_INVESTIGATION2SIMILAR_INCIDENT_SEARCH3CHANGE_RISK_ANALYSIS4RUNBOOK_RETRIEVAL5RCA_GENERATION6EXECUTIVE_UPDATE7TICKET_SUMMARY8GENERAL_QAShow more lines
+Recommendation: use a small/low-cost model or deterministic classifier first. Do not send every request to the most expensive reasoning model like a clown with venture funding.
+
+E. Risk Classifier
+Classifies risk level before tool invocation.
+Plain Text1LOW       → read-only retrieval2MEDIUM    → AI-generated recommendation3HIGH      → customer-facing communication4CRITICAL  → remediation or production-impacting actionShow more lines
+For v1, Infrastructure Copilot should only allow:
+Plain Text1Read-only tools2Draft generation3Recommendation generation4Human-reviewed outputsShow more lines
+OWASP’s LLM06:2025 Excessive Agency - OWASP Gen AI Security Project states that excessive agency can occur when an LLM-based system has excessive functionality, excessive permissions, or excessive autonomy, and that it can lead to confidentiality, integrity, and availability impacts depending on systems the LLM app can interact with. [genai.owasp.org]
+
+F. Tool Planner
+Chooses which internal tools may be used.
+Allowed v1 tools:
+Plain Text1IncidentSearchTool2ChangeSearchTool3KnowledgeSearchTool4RunbookSearchTool5AssetLookupTool6ServiceGraphLookupTool7RAGQueryTool8AuditWriteTool9UsageWriteToolShow more lines
+Not allowed in v1:
+
+This restriction is a recommendation based on OWASP’s excessive-agency risk guidance, especially around excessive permissions and excessive autonomy. [genai.owasp.org]
+
+G. Retrieval Planner
+Decides what context is required.
+Example:
+Plain Text1User asks:2"Why is payment API failing after last deployment?"3 4Retrieval plan:51. Fetch active incident62. Fetch recent changes for service73. Fetch related alerts84. Fetch similar incidents95. Fetch runbooks106. Fetch service dependency graphShow more lines
+How Microsoft Ships AI Agents at Enterprise Scale says context is the competitive advantage and that enterprise success comes from grounding AI with enterprise knowledge, business process context, real-time data, and organizational memory. [How Micros...run thous | Viva Engage]
+
+H. Context Builder
+Constructs the model input package.
+JSON1{2  "tenantId": "tenant-guid",3  "userId": "user-guid",4  "intent": "INCIDENT_INVESTIGATION",5  "authorizedContext": {6    "incidents": [],7    "changes": [],8    "alerts": [],9    "runbooks": [],10    "serviceGraph": []11  },12  "constraints": {13    "noProductionAction": true,14    "requireCitations": true,15    "maxTokens": 600016  }17}Show more lines
+Important rule:
+Plain Text1If context is not authorized, it is not included.Show more lines
+
+I. Prompt Builder
+Builds structured prompts.
+Prompt sections:
+Plain Text1System instruction2Tenant policy constraints3User role context4Intent-specific instruction5Retrieved context6User question7Output schema8Citation requirement9 Show more lines
+Do not allow user text to directly override system instructions.
+OWASP’s OWASP Top 10 for LLM Applications 2025 lists LLM01:2025 Prompt Injection and LLM05:2025 Improper Output Handling among the Top 10 risks. [owasp.org]
+
+J. Model Gateway
+Routes requests to the correct BYOK model provider.
+Supported v1 providers:
+Plain Text1Azure OpenAI2OpenAI3Mock provider for local developmentShow more lines
+Future providers:
+Plain Text1Anthropic2AWS Bedrock3GCP Vertex AI4Self-hosted model endpointShow more lines
+NEUROAIENG-Client-MARCH2026 states that a broad spectrum of foundation models are supported, including cloud-native LLMs across AWS, Azure, and GCP, as well as Anthropic Claude, through a unified interface. [NEUROAIENG...-MARCH2026 | PowerPoint]
+
+K. Guardrail Engine
+Applies controls before and after model invocation.
+Pre-model checks:
+Plain Text1Prompt injection detection2PII detection3Secret detection4Tenant boundary validation5Tool permission validation6Token budget validationShow more lines
+Post-model checks:
+Plain Text1Citation required2No unsupported claims3No unsafe remediation4No secret leakage5No forbidden action6Structured output validationShow more lines
+Why-AI-Guardrails-Are-Critical-for-Scalable-and-Responsible-Enterprise-Innovation- says AI guardrails should include input controls, output monitoring, access management, model governance, audit and logging, approval workflows, and compliance documentation. [Why AI Gua...nnovation? | SharePoint]
+
+L. Output Validator
+Validates that output is:
+
+If validation fails:
+Plain Text1Return safe fallback2Log safety event3Do not expose raw model responseShow more lines
+
+M. Citation Builder
+Every factual operational answer should include source references.
+Examples:
+Plain Text1Incident source2Change source3Runbook source4Knowledge article source5RCA source6Alert source7Service dependency sourceShow more lines
+This is required because Infrastructure Copilot is a production operations product, not a motivational chatbot.
+
+N. Audit Logger
+Logs:
+Plain Text1tenant_id2user_id3request_id4intent5tools_called6retrieved_source_ids7model_provider8model_name9prompt_tokens10completion_tokens11response_status12policy_decision13citations14timestampShow more lines
+Why-AI-Guardrails-Are-Critical-for-Scalable-and-Responsible-Enterprise-Innovation- says organizations must demonstrate transparency, accountability, and auditability, and that guardrails enable tracking/logging behavior, enforcing approval workflows, and maintaining compliance documentation. [Why AI Gua...nnovation? | SharePoint]
+
+3. Security Considerations
+3.1 Core Security Rules
+Plain Text1No tenant-free AI request.2No model call without RBAC.3No RAG retrieval without tenant and ACL filters.4No tool invocation without policy approval.5No production-changing tool in v1.6No raw model output returned before validation.7No response without audit event.8No BYOK credential in prompt, logs, or frontend.Show more lines
+OWASP’s LLM06:2025 Excessive Agency - OWASP Gen AI Security Project explicitly identifies excessive functionality, excessive permissions, and excessive autonomy as root causes of excessive agency. [genai.owasp.org]
+
+3.2 Tool Permission Model
+Each tool must declare:
+JSON1{2  "toolName": "ChangeSearchTool",3  "riskLevel": "LOW",4  "requiredPermission": "change.read",5  "allowedIntents": ["CHANGE_RISK_ANALYSIS", "INCIDENT_INVESTIGATION"],6  "isReadOnly": true,7  "requiresHumanApproval": false8}Show more lines
+For future action tools:
+
+This implementation detail is our product design recommendation based on OWASP’s excessive-agency warning around unnecessary functionality and permissions. [genai.owasp.org]
+
+3.3 Prompt Injection Defense
+Controls:
+Plain Text1Separate instruction context from data context2Treat retrieved documents as untrusted data3Strip or neutralize tool-invocation instructions inside retrieved text4Validate tool calls against server-side policy5Never allow retrieved content to override system policyShow more lines
+OWASP’s OWASP Top 10 for LLM Applications 2025 includes LLM01:2025 Prompt Injection, and LLM06:2025 Excessive Agency - OWASP Gen AI Security Project states that direct or indirect prompt injection can trigger excessive agency. [owasp.org], [genai.owasp.org]
+
+4. Scalability
+4.1 Scaling Model
+Scale these components independently:
+Plain Text1AI Orchestrator Pods2RAG Service Pods3Embedding Workers4Evaluation Workers5Audit/Event Writers6Model GatewayShow more lines
+NEUROAIENG-Client-MARCH2026 references centralized visibility and control over cost, performance, security, and compliance of AI models, infrastructure, and datasets, plus end-to-end monitoring of AI performance at both agent and solution levels. [NEUROAIENG...-MARCH2026 | PowerPoint]
+
+4.2 Cost Controls
+Mandatory:
+Plain Text1tenant-level token budgets2user-level rate limits3model routing by intent4semantic cache for repeat questions5max tool iterations6max retrieved chunks7max response tokensShow more lines
+How Microsoft Ships AI Agents at Enterprise Scale says foundation model releases can change reasoning patterns, latency characteristics, and tool-calling behaviors, and that prompts, tool selection strategies, evaluation benchmarks, guardrails, and quality/safety baselines may need revalidation. [How Micros...run thous | Viva Engage]
+
+4.3 Latency Strategy
+Recommended target behavior:
+Plain Text1Simple summary → direct model call with minimal context2Runbook lookup → RAG only3Incident investigation → RAG + operational tools4Complex RCA → async jobShow more lines
+This is our implementation recommendation, supported by the Azure Architecture Center guidance to use the lowest orchestration complexity that reliably meets requirements. [learn.microsoft.com]
+
+5. Risks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RiskImpactMitigationExcessive agencyAI may perform damaging actionsv1 read-only tools, policy engine, human approval for future actionsPrompt injectionUser or document manipulates behaviorprompt/data separation, guardrails, output validationCross-tenant retrievalSevere SaaS breachtenant filter, ACL filter, audit logsTool loopHigh cost and latencymax iterations and timeoutHallucinated RCAWrong operations decisioncitations required, confidence score, human reviewModel provider outageAI feature degradationBYOK provider health checks and fallback policyHigh token costPoor SaaS marginsmodel routing, token budgets, context compressionPoor observabilityCannot debug AI behaviortrace every request/tool/model/retrieval step
+OWASP’s LLM06:2025 Excessive Agency - OWASP Gen AI Security Project states that agent-based systems can repeatedly call an LLM using previous outputs to ground and direct later invocations, and that excessive agency can be triggered by hallucination, prompt injection, compromised extensions, or peer agents in multi-agent systems. [genai.owasp.org]
+
+6. Recommended Implementation
+6.1 v1 Orchestration Runtime
+Recommended technology:
+Plain Text1Backend: .NET 92AI Orchestration Service: Python or .NET3Framework option: Semantic Kernel4Model access: BYOK Model Gateway5Retrieval: RAG Service6Events: Azure Service Bus7Observability: OpenTelemetryShow more lines
+Semantic Kernel Agent Orchestration | Microsoft Learn states that Semantic Kernel’s Agent Orchestration framework supports patterns including concurrent, sequential, handoff, group chat, and magentic orchestration, and provides a unified interface for construction and invocation. It also notes the feature is experimental. [learn.microsoft.com]
+Because Semantic Kernel Agent Orchestration | Microsoft Learn marks Agent Orchestration features as experimental, my recommendation is: use Semantic Kernel concepts and connectors where useful, but keep Infrastructure Copilot’s production policy engine, audit model, tenant isolation, and tool registry under our own control. [learn.microsoft.com]
+
+6.2 Orchestration State Machine
+Plain Text1RECEIVED2→ AUTHORIZED3→ INTENT_CLASSIFIED4→ RISK_CLASSIFIED5→ PLAN_CREATED6→ CONTEXT_RETRIEVED7→ PROMPT_BUILT8→ MODEL_INVOKED9→ OUTPUT_VALIDATED10→ CITATIONS_ATTACHED11→ AUDIT_RECORDED12→ RESPONSE_SENTShow more lines
+Failure states:
+Plain Text1AUTH_FAILED2POLICY_DENIED3RETRIEVAL_FAILED4MODEL_FAILED5VALIDATION_FAILED6RATE_LIMITEDShow more lines
+
+6.3 Tool Registry
+JSON1{2  "name": "IncidentSearchTool",3  "version": "1.0.0",4  "description": "Search tenant-scoped incidents.",5  "riskLevel": "LOW",6  "permissions": ["incident.read"],7  "readOnly": true,8  "timeoutMs": 3000,9  "maxRetries": 210}Show more lines
+What are Planners in Semantic Kernel | Microsoft Learn states that function calling allows a model to invoke a function with the right parameters and can create a feedback loop where the AI calls a function, checks the result, and decides what to do next. [learn.microsoft.com]
+Infrastructure Copilot should not allow unrestricted model-directed tool use. Tool calls must be validated server-side against the Tool Registry and Policy Engine.
+
+6.4 Orchestration API
+HTTP1POST /api/v1/copilot/chat2POST /api/v1/ai/orchestrations3GET  /api/v1/ai/orchestrations/{id}4POST /api/v1/ai/orchestrations/{id}/feedback5GET  /api/v1/ai/tools6GET  /api/v1/ai/evaluationsShow more lines
+Example request:
+JSON1{2  "message": "Why is the payment API failing after the latest deployment?",3  "entityContext": {4    "entityType": "incident",5    "entityId": "1f4a7a8d-2486-4b8f-9c58"6  },7  "responseFormat": "troubleshooting_steps",8  "aiProviderId": "customer-byok-provider-id"9}Show more lines
+Example response:
+JSON1{2  "orchestrationId": "7a1b2c3d",3  "intent": "INCIDENT_INVESTIGATION",4  "riskLevel": "MEDIUM",5  "answer": "The most likely investigation path is...",6  "citations": [7    {8      "sourceType": "incident",9      "sourceId": "INC0012345",10      "title": "Payment API timeout"11    }12  ],13  "toolsUsed": [14    "IncidentSearchTool",15    "ChangeSearchTool",16    "RAGQueryTool"17  ],18  "confidenceScore": 0.84,19  "usage": {20    "model": "gpt-4o",21    "totalTokens": 381222  }23}Show more lines
+The API shape above is our implementation recommendation based on prior OpenAPI v1 design and the orchestration needs described in this specification.
+
+6.5 Evaluation Framework
+Track:
+Plain Text1intent_accuracy2tool_selection_accuracy3retrieval_relevance4citation_coverage5groundedness6answer_correctness7policy_violation_rate8latency_ms9cost_per_request10human_feedback_scoreShow more lines
+How Microsoft Ships AI Agents at Enterprise Scale states that continuous evaluation is required because production AI systems are continuously evolving ecosystems, and new model releases may require revalidation of prompts, tool selection strategies, evaluation benchmarks, guardrails, and quality/safety baselines. [How Micros...run thous | Viva Engage]
+NEUROAIENG-Client-MARCH2026 references DeepEval for security, accountability, and accuracy of AI solutions, and RAGAs for evaluating RAG quality. [NEUROAIENG...-MARCH2026 | PowerPoint]
+
+7. Future Improvements
+Phase 2: Specialist Agents
+Add read-only specialists:
+Plain Text1Incident Analyst Agent2Change Analyst Agent3Runbook Agent4Service Graph Agent5RCA Drafting Agent6Executive Communication AgentShow more lines
+AI Agent Orchestration Patterns - Azure Architecture Center says multiagent orchestration can handle cross-functional or cross-domain problems, scenarios needing distinct security boundaries for each agent, and tasks that benefit from parallel specialization. [learn.microsoft.com]
+
+Phase 3: Orchestration Patterns
+Use selectively:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PatternFuture Use CaseSequentialRCA draft pipelineConcurrentParallel incident, change, and service analysisHandoffRoute from general copilot to specialistGroup ChatExpert-style analysis with human reviewMagenticComplex open-ended investigation
+Semantic Kernel Agent Orchestration | Microsoft Learn lists supported patterns including concurrent, sequential, handoff, group chat, and magentic orchestration. [learn.microsoft.com]
+
+Phase 4: Human-in-the-Loop Controlled Remediation
+Future only.
+Plain Text1AI recommends action2→ Human approves3→ Policy engine validates4→ Automation tool executes5→ Audit log recordsShow more lines
+Do not ship this in MVP. This is where excessive agency risks become serious. OWASP explicitly links excessive agency to excessive functionality, permissions, and autonomy. [genai.owasp.org]
+
+Final CTO Verdict
+AI Orchestration Specification is now done.
+Infrastructure Copilot’s v1 AI orchestration should be:
+Plain Text1Single orchestrator2Tool-based3RAG-first4BYOK-enabled5Tenant-scoped6Read-only by default7Policy-controlled8Citation-enforced9Audit-everything10Evaluation-drivenShow more lines
+Architecture Rule
+Plain Text1The LLM never decides alone.2The Orchestrator decides through policy.Show more lines
+That one rule protects the business.

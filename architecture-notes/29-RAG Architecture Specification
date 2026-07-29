@@ -1,0 +1,251 @@
+RAG Architecture Specification
+Infrastructure Copilot v1.0
+
+1. Business Perspective
+For Infrastructure Copilot, RAG is not a “knowledge chatbot” feature. It is the investigation intelligence layer that allows the product to reduce MTTR by grounding answers in customer-specific operational data.
+The Infra Copilot-PRD explicitly positions Infrastructure Copilot as a multi-tenant AI-powered Infrastructure Intelligence Platform designed to reduce MTTR using retrieval, incident correlation, historical pattern matching, change analysis, knowledge retrieval, and guided troubleshooting. [Infra Copilot-PRD | Outlook]
+The business reason RAG exists in this product:
+Plain Text1Engineers waste time searching incidents, changes, KBs, runbooks, alerts, and service context.2 3RAG brings the right operational context to the AI before the AI responds.Show more lines
+The internal Retrieval-Augmented-Generation-(RAG)-in-the-Real-World states that RAG enhances LLMs by retrieving relevant information from external data sources before generating responses, allowing models to fetch relevant documents, use them as context, and generate more grounded responses. [Retrieval-...Real World | SharePoint]
+Co-founder challenge: Do not build RAG as “upload PDF and ask question.” That is demo architecture. For Infrastructure Copilot, RAG must retrieve from incidents, changes, CMDB, alerts, runbooks, RCA history, SOPs, and service dependency data.
+
+2. Technical Architecture
+Recommended RAG Pattern
+For v1, use:
+Plain Text1Hybrid Retrieval + Metadata Filtering + Reranking + Citation EnforcementShow more lines
+Not naive vector search only.
+Why? A-Practical-Guide-to-RAG--Architectures,-Techniques,-and-Framework-Selection states that early naive RAG divides documents into chunks, converts them into embeddings, stores them in a vector database, and retrieves using similarity search, but it has limitations such as weak understanding of document relationships, poor handling of complex reasoning, degraded retrieval quality at scale, and difficulty with domain-specific terminology. [A Practica...Selection | SharePoint]
+The same source recommends hybrid retrieval, query rewriting, metadata filtering, and context compression for enterprise knowledge assistant scenarios. [A Practica...Selection | SharePoint]
+
+RAG High-Level Architecture
+Plain Text1User Query2   ↓3AI Orchestrator4   ↓5Intent Classifier6   ↓7Retrieval Planner8   ↓9Tenant & Permission Filter10   ↓11Hybrid Retrieval12   ↓13Reranker14   ↓15Context Builder16   ↓17Prompt Builder18   ↓19Azure OpenAI / BYOK Model20   ↓21Citation Builder22   ↓23Response Validator24   ↓25Audited AnswerShow more lines
+Microsoft’s Azure Architecture Center describes a RAG application flow where the user sends a query to an intelligent application, the application calls an orchestrator, the orchestrator determines which search to run on Azure AI Search, packages the top results as context, sends the prompt to the language model, and returns the response. [learn.microsoft.com]
+
+3. Security Considerations
+Golden Rule
+Plain Text1Retrieve only what the user is authorized to see.Show more lines
+Microsoft’s secure multitenant RAG guidance states that in multitenant scenarios, tenants and users must only incorporate grounding data they are authorized to access. [learn.microsoft.com]
+That means the RAG layer must enforce:
+Plain Text1tenant_id filtering2user permission filtering3document ACL filtering4source-system authorization5role-based retrieval6audit loggingShow more lines
+Wrong Design
+Plain Text1Vector Search Top 102↓3Send chunks to LLMShow more lines
+This is dangerous because vector search is optimized for similarity, not authorization.
+Correct Design
+Plain Text1User Query2↓3Resolve Tenant4↓5Resolve User Permissions6↓7Apply Tenant Filter8↓9Apply ACL Filter10↓11Retrieve Chunks12↓13Send Only Authorized Context to ModelShow more lines
+Azure AI Search multitenancy guidance states that a multitenant application provides the same services to multiple tenants who cannot see or share another tenant’s data, and discusses tenant isolation strategies for applications built with Azure AI Search. [learn.microsoft.com]
+
+4. Scalability
+Azure AI Search as Primary RAG Store
+Recommendation:
+Plain Text1Use Azure AI Search for production RAG.2Use pgvector only for local/dev or low-cost experimental tier.Show more lines
+Azure AI Search documentation states that data is stored in indexes within a search service, each index has a schema, data is added as documents, and full-text queries are issued against an index. [learn.microsoft.com]
+Azure AI Search documentation also says the service can scale through partitions for storage and replicas for request throughput. [learn.microsoft.com]
+Search Isolation Models
+Recommended model by tier:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Customer TierSearch Isolation ModelReasonStarterShared index with strict tenant_id filterLowest costProfessionalShared service, index per tenantBetter isolationEnterpriseDedicated Azure AI Search serviceStronger isolationRegulatedDedicated subscription and private networkingHighest isolation
+Azure AI Search multitenancy guidance discusses tenant isolation strategies and includes one-index-per-tenant as one of the design patterns. [learn.microsoft.com]
+
+5. Risks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RiskImpactMitigationPoor retrieval qualityWrong AI answerHybrid search, reranking, evaluationCross-tenant retrievalSevere data breachTenant filter, ACL filter, testsStale knowledgeBad troubleshootingIncremental re-indexingPrompt injection through documentsUnsafe AI behaviorPrompt shields, content inspectionLarge context payloadHigh cost and latencyContext compressionNo citationsLow trustCitation mandatoryOver-reliance on vector searchMisses exact operational termsHybrid keyword + vectorRAG latencySlower responseCache frequent results and tune top-K
+Retrieval-Augmented-Generation-(RAG)-in-the-Real-World explicitly lists challenges including poor retrieval causing wrong answers, chunking strategy problems, latency issues, data freshness problems, and security risks such as prompt injection through documents, data leakage, and access control issues. [Retrieval-...Real World | SharePoint]
+
+6. Recommended Implementation
+6.1 RAG Data Sources
+Infrastructure Copilot RAG should ingest:
+Plain Text1ServiceNow incidents2ServiceNow changes3ServiceNow knowledge articles4Jira tickets5Runbooks6SOPs7RCA/PIR documents8CMDB/service mapping9Monitoring alerts10Historical incident summaries11Teams/Slack incident notes, later phase onlyShow more lines
+The older Discussion on TJX OpsMind AI mentioned infrastructure topology, architecture, configurations, dependencies, performance metrics, incident records, change logs, SOPs, KBAs, SLAs, OLAs, user queries, resolution paths, and feedback as intelligence sources for operational stability and guided resolution. [Mitra, Ankit in chat | Teams]
+
+6.2 Offline Ingestion Pipeline
+Plain Text1Connector Pull2   ↓3Document Normalization4   ↓5Security Metadata Extraction6   ↓7Chunking8   ↓9Metadata Enrichment10   ↓11Embedding Generation12   ↓13Index Write to Azure AI Search14   ↓15PostgreSQL Metadata UpdateShow more lines
+Microsoft’s RAG design guidance describes a data pipeline where documents or media are pushed or pulled into a data pipeline, processed individually, chunked into semantically relevant parts, enriched with metadata, embedded, and persisted in a search index. [learn.microsoft.com]
+Demystifying-RAG-in-AI describes the indexing phase as collecting documents, breaking them into chunks, converting chunks into vector embeddings, and saving them in a database. [Demystifyi...RAG in AI | SharePoint]
+
+6.3 Online Retrieval Pipeline
+Plain Text1User Query2   ↓3Intent Detection4   ↓5Query Rewriting6   ↓7Permission Resolution8   ↓9Hybrid Search10   ↓11Reranking12   ↓13Context Compression14   ↓15Prompt Assembly16   ↓17LLM Response18   ↓19Citation Validation20   ↓21Audit LogShow more lines
+Microsoft’s RAG guidance says the orchestrator determines which search to run on Azure AI Search and packages top results as context for the language model. [learn.microsoft.com]
+Demystifying-RAG-in-AI describes the query phase as searching the database for matching text blocks, adding those blocks to a prompt, and giving the prompt to AI to form the final reply. [Demystifyi...RAG in AI | SharePoint]
+
+6.4 Chunking Strategy
+Recommended Chunk Types
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Data TypeChunk StrategyKB ArticleSection-based chunksRunbookStep-based chunksIncident TicketSummary, timeline, resolution chunksChange RecordPlan, risk, backout, implementation chunksRCA/PIRProblem, cause, action item chunksAlertEvent-level structured chunkCMDBEntity relationship metadata, not plain text only
+Microsoft’s RAG guidance says chunking breaks media files into semantically relevant parts that ideally have a single idea or concept. [learn.microsoft.com]
+Retrieval-Augmented-Generation-(RAG)-in-the-Real-World states chunking strategy matters and that chunks that are too large add noisy context while chunks that are too small lose meaning. [Retrieval-...Real World | SharePoint]
+
+6.5 Metadata Strategy
+Every indexed chunk must include:
+JSON1{2  "chunk_id": "uuid",3  "tenant_id": "uuid",4  "source_type": "servicenow_incident",5  "source_id": "INC0012345",6  "document_id": "uuid",7  "title": "Database timeout incident",8  "service_name": "Payments API",9  "environment": "production",10  "severity": "P1",11  "created_at": "2026-07-30T00:00:00Z",12  "acl_users": [],13  "acl_groups": ["sre-team"],14  "classification": "internal",15  "retention_policy": "standard"16}Show more lines
+This is my recommended implementation detail for Infrastructure Copilot, based on the documented need for tenant authorization and metadata-enriched retrieval in RAG. Microsoft’s RAG design guidance explicitly includes metadata enrichment, and secure multitenant RAG guidance requires authorization-aware grounding. [learn.microsoft.com], [learn.microsoft.com]
+
+6.6 Retrieval Strategy
+Use Hybrid Retrieval
+Plain Text1Keyword Search2+3Vector Search4+5Metadata Filtering6+7RerankingShow more lines
+Azure AI Search documentation says its search engine supports vector similarity search, keyword search, fuzzy search, geospatial search, filters, and hybrid query requests. [docs.azure.cn]
+Microsoft’s information retrieval guidance says Azure AI Search supports vector search configurations and discusses vector algorithms, similarity metrics, and index configuration. [learn.microsoft.com]
+
+6.7 RAG Service Components
+Plain Text1RAG Service2├── Query Normalizer3├── Intent-Aware Retrieval Planner4├── Tenant Filter Builder5├── ACL Filter Builder6├── Hybrid Search Client7├── Reranking Engine8├── Context Compressor9├── Citation Mapper10├── Retrieval Evaluator11└── Retrieval Telemetry LoggerShow more lines
+How Microsoft Ships AI Agents at Enterprise Scale states that production AI requires governance, security, monitoring, evaluation, human review, identity and access controls, guardrails, context retrieval, tool integrations, CI/CD, and observability around the model. [How Micros...run thous | Viva Engage]
+The same source states that retrieval is increasingly treated as a dedicated sub-agent responsible for finding context, validating sources, curating information, and feeding downstream agents. [How Micros...run thous | Viva Engage]
+
+6.8 RAG Index Design
+Azure AI Search Index: tenant-knowledge-index
+Recommended fields:
+YAML1fields:2  - name: id3    type: Edm.String4    key: true5 6  - name: tenant_id7    type: Edm.String8    filterable: true9 10  - name: source_type11    type: Edm.String12    filterable: true13 14  - name: source_id15    type: Edm.String16    filterable: true17 18  - name: document_id19    type: Edm.String20    filterable: true21 22  - name: title23    type: Edm.String24    searchable: true25    retrievable: true26 27  - name: chunk_text28    type: Edm.String29    searchable: true30    retrievable: true31 32  - name: service_name33    type: Edm.String34    filterable: true35    searchable: true36 37  - name: environment38    type: Edm.String39    filterable: true40 41  - name: severity42    type: Edm.String43    filterable: true44 45  - name: acl_groups46    type: Collection(Edm.String)47    filterable: true48 49  - name: acl_users50    type: Collection(Edm.String)51    filterable: true52 53  - name: embedding54    type: Collection(Edm.Single)55    searchable: true56    vectorSearchDimensions: 1536Show more lines
+This is my recommended schema for Infrastructure Copilot. Azure AI Search documentation states that indexes have schemas defined by customizable fields and documents must fit that schema. [learn.microsoft.com]
+
+6.9 RAG Runtime Flow
+Plain Text11. User asks:2   "Why is the payment API failing?"3 42. AI Orchestrator classifies intent:5   Incident Investigation6 73. RAG Service builds filters:8   tenant_id = current tenant9   environment = production10   acl_groups in user groups11 124. Search runs:13   Hybrid keyword + vector14 155. Results are reranked:16   Prioritize incidents, changes, runbooks, RCA history17 186. Context is compressed:19   Remove duplicate and low-value chunks20 217. Prompt is built:22   User question + authorized context + instructions23 248. Model responds:25   Grounded answer26 279. Citation Builder attaches sources:28   Incident, change, runbook, RCA29 3010. Audit Service records:31   query, retrieved chunk IDs, model, user, tenant, citationsShow more lines
+
+6.10 RAG Evaluation Metrics
+Track:
+Plain Text1retrieval_precision2retrieval_recall3groundedness4citation_coverage5answer_correctness6latency_ms7top_k_relevance8zero_result_rate9hallucination_flag_rate10user_feedback_scoreShow more lines
+Microsoft’s RAG evaluation guidance states that RAG evaluation should consider metrics including groundedness, completeness, utilization, relevancy, and correctness. [learn.microsoft.com]
+It also notes that agentic RAG introduces additional evaluation dimensions including tool selection accuracy, retrieval efficiency, number of tool calls per request, and end-to-end latency across reasoning steps. [learn.microsoft.com]
+
+6.11 RAG API Contract
+Recommended APIs:
+HTTP1POST /api/v1/rag/query2POST /api/v1/rag/reindex3POST /api/v1/rag/documents/{documentId}/chunks4GET  /api/v1/rag/indexes5GET  /api/v1/rag/evaluations6POST /api/v1/rag/evaluations/runShow more lines
+Example request:
+JSON1{2  "query": "What caused similar payment API failures?",3  "entityContext": {4    "entityType": "incident",5    "entityId": "4a2f7c8a-6e5d-41cb-9824-a6b129"6  },7  "filters": {8    "sourceTypes": ["incident", "change", "runbook", "rca"],9    "environment": "production",10    "maxAgeDays": 36511  },12  "topK": 10,13  "rerank": true,14  "includeCitations": true15}Show more lines
+Example response:
+JSON1{2  "queryId": "79a13e68-16a8-4d82-99e2",3  "results": [4    {5      "chunkId": "chunk-001",6      "sourceType": "incident",7      "sourceId": "INC0012345",8      "title": "Payment API timeout",9      "excerpt": "Database query latency increased during payment authorization.",10      "relevanceScore": 0.9111    }12  ],13  "citations": [14    {15      "sourceType": "incident",16      "sourceId": "INC0012345",17      "title": "Payment API timeout"18    }19  ]20}Show more lines
+This API design is my recommendation, based on the RAG patterns and evaluation requirements above.
+
+7. Future Improvements
+Phase 2: Advanced Enterprise RAG
+Plain Text1Query rewriting2Reranking model3Context compression4Parent-child retrieval5Semantic cachingShow more lines
+A-Practical-Guide-to-RAG--Architectures,-Techniques,-and-Framework-Selection identifies hybrid retrieval, query rewriting, metadata filtering, context compression, multi-hop retrieval, Graph RAG, and agentic retrieval as advanced RAG patterns. [A Practica...Selection | SharePoint]
+Phase 3: Graph RAG
+Use when Infrastructure Copilot needs service dependency reasoning:
+Plain Text1Incident → Service → Asset → Change → Alert → RCAShow more lines
+A-Practical-Guide-to-RAG--Architectures,-Techniques,-and-Framework-Selection states that modern production systems increasingly rely on hybrid retrieval, reranking, graph-based reasoning, multi-hop retrieval, and agentic workflows. [A Practica...Selection | SharePoint]
+Phase 4: Agentic RAG
+Use when the AI must plan multiple retrieval steps:
+Plain Text1Find current incident2↓3Find impacted service4↓5Find recent changes6↓7Find similar incidents8↓9Find runbook10↓11Generate answerShow more lines
+Microsoft’s RAG guidance explicitly includes when to consider agentic RAG and how to implement it as part of the RAG design series. [learn.microsoft.com]
+
+Final CTO Verdict
+Is RAG Architecture Specification done?
+Now yes. This is the completed v1 specification.
+Final Recommended RAG Stack
+Plain Text1RAG Store:2Azure AI Search3 4Operational Metadata:5PostgreSQL6 7Storage:8Azure Blob Storage9 10Embedding:11BYOK provider embedding model or Azure OpenAI embeddings12 13Generation:14BYOK model via AI Gateway15 16Security:17Tenant filters + ACL filters + audit logs18 19Retrieval:20Hybrid search + metadata filtering + reranking21 22Evaluation:23Groundedness, relevancy, correctness, citation coverage, latencyShow more lines
+Architecture Rule
+Plain Text1No authorized context2=3No AI answerShow more lines
+That one sentence is the spine of enterprise-safe RAG for Infrastructure Copilot.

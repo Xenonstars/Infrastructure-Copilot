@@ -1,0 +1,179 @@
+Engineering Implementation Roadmap
+Infrastructure Copilot v1 (Enterprise SaaS)
+
+Phase 0 — Foundation
+Goal
+Create a production-ready engineering platform before writing business features.
+Sprint 0
+Plain Text1Monorepo Creation2CI/CD Setup3AKS Infrastructure4PostgreSQL5Redis6Azure AI Search7Key Vault8Monitoring Stack9OpenTelemetry10GitHub ActionsShow more lines
+Repositories
+Plain Text1infra-copilot-web2infra-copilot-api3infra-copilot-ai4infra-copilot-workers5infra-copilot-iac6infra-copilot-docsShow more lines
+Deliverables
+Plain Text1Working AKS Cluster2Working Build Pipeline3Working Deployment Pipeline4Environments:5    DEV6    TEST7    PRODShow more lines
+
+Phase 1 — SaaS Core Platform
+Goal
+Build the multi-tenant platform backbone.
+Epic 1
+Tenant Management
+Features:
+Plain Text1Create Tenant2Update Tenant3Suspend Tenant4Delete Tenant5Subscription PlansShow more lines
+Sprint 1
+Plain Text1Tenant Service2Tenant APIs3Tenant Database Tables4Tenant MiddlewareShow more lines
+Sprint 2
+Plain Text1RBAC Service2Roles3Permissions4User AdministrationShow more lines
+Deliverables:
+Plain Text1Tenant Login2Tenant Isolation3RBAC EnforcementShow more lines
+This directly aligns with the previously defined tenant isolation architecture and governance controls.
+
+Phase 2 — Identity & Security
+Goal
+Enterprise authentication.
+Epic 2
+Authentication & Authorization
+Sprint 3
+Plain Text1Entra ID Integration2JWT Processing3Claims Mapping4User ProvisioningShow more lines
+Sprint 4
+Plain Text1Policy Engine2Audit Service3Security Events4Session ManagementShow more lines
+Deliverables:
+Plain Text1SSO2MFA Support3Audit Logging4Policy-Based SecurityShow more lines
+Enterprise guidance emphasizes identity, permissions, governance, auditability, and workload identity controls as foundational requirements.
+
+Phase 3 — Incident Intelligence MVP
+Goal
+Deliver first customer value.
+Epic 3
+Incident Management Domain
+Sprint 5
+Plain Text1Incident Entity2Incident APIs3Incident Storage4Incident SearchShow more lines
+Sprint 6
+Plain Text1Incident Timeline2Incident Correlation3Incident SimilarityShow more lines
+Sprint 7
+Plain Text1RCA Draft Generator2Executive Summary GeneratorShow more lines
+Deliverables:
+Plain Text1Incident Search2Similar Incidents3Incident Summaries4RCA GenerationShow more lines
+This directly supports the PRD goal of helping engineers find similar incidents, identify causes, and reduce investigation time.
+
+Phase 4 — Knowledge Platform
+Goal
+Build the RAG foundation.
+Epic 4
+Knowledge Management
+Sprint 8
+Plain Text1Document Upload2Document Metadata3Storage LayerShow more lines
+Sprint 9
+Plain Text1Chunking Pipeline2Embedding Pipeline3Indexer PipelineShow more lines
+Sprint 10
+Plain Text1Azure AI Search2Document Retrieval3Citation EngineShow more lines
+Deliverables:
+Plain Text1Knowledge Base2Runbooks3KB Articles4Document SearchShow more lines
+Internal RAG guidance describes ingestion pipelines involving chunking, enrichment, embeddings, vector storage, retrieval, and citation-backed responses.
+
+Phase 5 — AI Core
+Goal
+Build Copilot intelligence.
+Epic 5
+AI Orchestration Layer
+Sprint 11
+Plain Text1Intent Classifier2Prompt Builder3Context BuilderShow more lines
+Sprint 12
+Plain Text1Model Gateway2BYOK Integration3Provider RegistryShow more lines
+Sprint 13
+Plain Text1Guardrails2Safety Validation3Response ValidationShow more lines
+Deliverables:
+Plain Text1Copilot Chat2BYOK Models3Secure AI CallsShow more lines
+Internal guidance highlights orchestration, guardrails, AI assurance, and multi-provider model support.
+
+Phase 6 — RAG Intelligence
+Goal
+Production-grade retrieval.
+Epic 6
+Investigation Intelligence
+Sprint 14
+Plain Text1Hybrid Search2Metadata Filters3Tenant FiltersShow more lines
+Sprint 15
+Plain Text1Reranking2Context CompressionShow more lines
+Sprint 16
+Plain Text1Grounded Responses2Citation ValidationShow more lines
+Deliverables:
+Plain Text1Operational Knowledge Assistant2Runbook Guidance3Problem Investigation SupportShow more lines
+This follows the recommended evolution from basic retrieval to hybrid, filtered, and citation-backed enterprise RAG.
+
+Phase 7 — Change Intelligence
+Goal
+Predict operational risk.
+Epic 7
+Change Analysis
+Sprint 17
+Plain Text1Change Repository2Change APIsShow more lines
+Sprint 18
+Plain Text1Change Correlation2Change Impact DetectionShow more lines
+Sprint 19
+Plain Text1Risk Scoring2Blast Radius EngineShow more lines
+Deliverables:
+Plain Text1Change Risk Analysis2Impact AssessmentShow more lines
+
+Phase 8 — Service Graph
+Goal
+Understand dependencies.
+Epic 8
+Service Topology
+Sprint 20
+Plain Text1Service Catalog2Application Dependency ModelShow more lines
+Sprint 21
+Plain Text1Graph Engine2Dependency MappingShow more lines
+Sprint 22
+Plain Text1Impact Analysis2Ownership DiscoveryShow more lines
+Deliverables:
+Plain Text1Service Dependency Graph2Impact MappingShow more lines
+
+Phase 9 — Enterprise Integrations
+Goal
+Connect customer systems.
+Epic 9
+Connector Framework
+Sprint 23
+Plain Text1ServiceNow ConnectorShow more lines
+Sprint 24
+Plain Text1Jira Connector2Confluence ConnectorShow more lines
+Sprint 25
+Plain Text1Teams Connector2Slack ConnectorShow more lines
+Sprint 26
+Plain Text1Azure Monitor2Datadog3DynatraceShow more lines
+Deliverables:
+Plain Text1Operational Data IntegrationShow more lines
+The product vision consistently references incidents, changes, KBs, runbooks, monitoring systems, and operational tools as data sources.
+
+Phase 10 — Observability & AI Evaluation
+Goal
+Measure AI quality.
+Epic 10
+AI Assurance Platform
+Sprint 27
+Plain Text1Prompt Telemetry2Token Cost TrackingShow more lines
+Sprint 28
+Plain Text1Groundedness Evaluation2Retrieval EvaluationShow more lines
+Sprint 29
+Plain Text1Feedback Loops2Human ReviewShow more lines
+Deliverables:
+Plain Text1AI Quality Dashboard2AI Cost DashboardShow more lines
+Internal AI engineering guidance specifically references DeepEval, RAG evaluation frameworks, monitoring, observability, drift detection, and AI assurance.
+
+MVP Definition
+Ship After Phase 6
+Do not wait for all phases.
+MVP Includes
+Plain Text1Tenant Management2Authentication3Incident Search4Knowledge Base5RAG6AI Orchestration7BYOK8Copilot Chat9Audit LogsShow more lines
+MVP Excludes
+Plain Text1Graph RAG2Service Graph3Advanced Agent Framework4Automated Remediation5Multi-Agent CoordinationShow more lines
+
+Target Team Structure
+Founding Team
+Plain Text11 Product Owner21 Architect32 Backend Engineers41 Frontend Engineer51 AI Engineer61 DevOps Engineer71 QA EngineerShow more lines
+
+Delivery Strategy
+Plain Text1Months 1-22Foundation3 4Months 3-45SaaS Core6 7Months 5-68Incident Intelligence9 10Months 7-811RAG + AI12 13Months 9-1014Enterprise Integrations15 16Months 11-1217Scale & OptimizationShow more lines
+CTO Recommendation
+If you're serious about selling this product:
+Plain Text1Build ONLY these first:2 31. Tenant Platform42. Incident Intelligence53. BYOK AI Gateway64. RAG Platform75. Copilot ChatShow more lines
+Everything else is a force multiplier.

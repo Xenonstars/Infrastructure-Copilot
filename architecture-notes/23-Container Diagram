@@ -1,0 +1,248 @@
+C4 Level 2 – Container Diagram
+Infrastructure Copilot
+We now zoom into the inside of Infrastructure Copilot.
+The Context Diagram answered:
+
+Who uses Infrastructure Copilot?
+
+The Container Diagram answers:
+
+What are the major deployable containers/services that make up Infrastructure Copilot?
+How do they communicate?
+
+This design follows the enterprise AI principle that production systems require orchestration, governance, retrieval, observability, identity controls, and integrations around the model, not merely model access.
+
+1. Business Perspective
+Infrastructure Copilot must support:
+
+Multi-tenant SaaS
+Enterprise SSO
+Incident Intelligence
+Change Intelligence
+Knowledge Intelligence
+RAG-based AI
+Auditability
+MSP multi-customer operations
+
+Instead of a monolithic application, we separate responsibilities into well-defined containers.
+
+2. C4 Container Diagram
+Plain Text1┌────────────────────────────────────────────────────────────────────┐2│                       INFRASTRUCTURE COPILOT                       │3└────────────────────────────────────────────────────────────────────┘4 5Enterprise Users6      │7      ▼8 9┌─────────────────────────┐10│ React Web Application   │11│ (Frontend Container)    │12└────────────┬────────────┘13             │ HTTPS14             ▼15 16┌─────────────────────────┐17│ Azure Front Door + WAF  │18└────────────┬────────────┘19             │20             ▼21 22┌─────────────────────────┐23│ API Management Gateway  │24└────────────┬────────────┘25             │26             ▼27 28┌──────────────────────────────────────┐29│ Authentication Service               │30│ Entra ID / OIDC / SAML               │31└────────────┬─────────────────────────┘32             │33             ▼34 35┌────────────────────────────────────────────┐36│ Core Application API                       │37│ .NET Backend                               │38│                                            │39│ Incident Intelligence                      │40│ Change Intelligence                        │41│ Knowledge Management                       │42│ User/Tenant Management                     │43│ Reporting                                  │44└────────────┬───────────────────────────────┘45             │46             │ Calls47             ▼48 49┌────────────────────────────────────────────┐50│ AI Orchestrator Service                    │51│                                            │52│ Prompt Builder                             │53│ Context Builder                            │54│ Citation Engine                            │55│ Guardrails                                 │56│ Tool Selection                             │57└────────────┬───────────────────────────────┘58             │59             │ Queries60             ▼61 62┌──────────────────────────────┐63│ RAG Service                  │64│ Retrieval Engine             │65│ Hybrid Search                │66│ Permission Filtering         │67└──────┬───────────────┬───────┘68       │               │69 70       ▼               ▼71 72┌──────────────┐   ┌────────────────┐73│ PostgreSQL   │   │ Azure AI Search│74│ Operational  │   │ Vector Search  │75│ Data         │   │ Knowledge Base │76└──────────────┘   └────────────────┘77 78       ▲79       │80       │ Cached Reads81       │82 83┌──────────────┐84│ Redis Cache  │85└──────────────┘86 87       ▲88       │89       │ Async Events90       ▼91 92┌───────────────────┐93│ Azure Service Bus │94└─────┬─────────────┘95      │96      │97      ▼98 99┌──────────────────────────┐100│ Worker Containers        │101│                          │102│ Sync Services            │103│ Ingestion Services       │104│ Embedding Generation     │105│ RCA Background Jobs      │106└───────────┬──────────────┘107            │108            ▼109 110External Systems:111ServiceNow112Jira113Confluence114SharePoint115Azure116AWS117GCP118Kubernetes119VMware120 121            │122            ▼123 124┌────────────────────┐125│ Azure OpenAI       │126│ GPT Models         │127│ Embeddings         │128└────────────────────┘129 130            │131            ▼132 133┌─────────────────────────┐134│ Observability Stack     │135│                         │136│ OpenTelemetry           │137│ App Insights            │138│ Azure Monitor           │139│ Log Analytics           │140│ Grafana                 │141│ Microsoft Sentinel      │142└─────────────────────────┘Show more lines
+
+3. Container Breakdown
+A. React Web Application
+Technology
+Plain Text1React2TypeScript3Redux ToolkitShow more lines
+Responsibilities
+
+Dashboard
+Incident Investigation UI
+Copilot Chat
+Change Risk Analysis
+RCA Generation
+Administration Portal
+
+Why Separate?
+Frontend evolves faster than backend.
+Independent deployment.
+
+B. API Gateway Container
+Technology
+Plain Text1Azure API ManagementShow more lines
+Responsibilities
+
+Why?
+Never expose backend services directly.
+Enterprise customers expect API governance.
+
+C. Authentication Container
+Responsibilities
+Plain Text1User Authentication2 3Token Validation4 5Tenant Resolution6 7Role ResolutionShow more lines
+Integrations
+Plain Text1Microsoft Entra ID2 3Okta4 5SAML ProvidersShow more lines
+The secure AI architecture guidance emphasizes trusted identities, workload identity governance, access controls, and policy boundaries.
+
+D. Core Application API
+This is the business brain.
+Modules
+Plain Text1Incident Service2 3Change Service4 5Knowledge Service6 7Asset Service8 9Reporting Service10 11Tenant Service12 13Audit ServiceShow more lines
+Why One Container Initially?
+My recommendation remains:
+Plain Text1Modular MonolithShow more lines
+instead of:
+Plain Text115 microservicesShow more lines
+This reduces complexity while preserving future service extraction.
+
+E. AI Orchestrator Service
+Most Important Container
+Responsibilities:
+Plain Text1Prompt Construction2 3Context Retrieval4 5Citation Building6 7Guardrails8 9Response Validation10 11Tool SelectionShow more lines
+Enterprise AI references emphasize orchestration, governance, evaluation, and context engineering as foundational capabilities.
+Example
+User asks:
+
+Why did payment systems fail?
+
+Flow:
+Plain Text1AI Orchestrator2   ↓3Retrieve incidents4   ↓5Retrieve changes6   ↓7Retrieve alerts8   ↓9Build context10   ↓11Call model12   ↓13Validate outputShow more lines
+
+F. RAG Service
+Separate Container
+Do NOT mix retrieval into chat logic.
+Recent AI architecture references specifically identify retrieval as an increasingly specialized capability requiring dedicated handling and governance.
+Responsibilities:
+Plain Text1Document Retrieval2 3Hybrid Search4 5Tenant Filtering6 7Permission Filtering8 9RankingShow more lines
+Input
+Plain Text1QuestionShow more lines
+Output
+Plain Text1Top N Relevant Knowledge ObjectsShow more lines
+
+G. PostgreSQL Container
+Source of Truth
+Stores:
+Plain Text1Users2 3Tenants4 5Incidents6 7Changes8 9Assets10 11Services12 13RCA14 15Audit EventsShow more lines
+Why Not Vector DB Here?
+Operational data is relational.
+AI search belongs elsewhere.
+
+H. Azure AI Search Container
+Stores:
+Plain Text1Knowledge Chunks2 3Runbooks4 5KB Articles6 7Historical RCA8 9EmbeddingsShow more lines
+Supports:
+Plain Text1Vector Search2 3Semantic Search4 5Hybrid SearchShow more lines
+This aligns with Microsoft's multitenant search and RAG architecture patterns.
+
+I. Redis Cache
+Used For
+Plain Text1Session Cache2 3Token Cache4 5Permission Cache6 7Frequently Used QueriesShow more lines
+Business Impact:
+Plain Text1Lower latency2Lower database cost3Lower AI costShow more lines
+
+J. Azure Service Bus
+Used for:
+Plain Text1Async ProcessingShow more lines
+Events:
+Plain Text1IncidentCreated2 3ChangeImported4 5KnowledgeUploaded6 7EmbeddingGenerated8 9RCARequestedShow more lines
+Why?
+Never allow AI processing to block the UI.
+
+K. Worker Containers
+These perform background processing.
+Knowledge Ingestion Worker
+Plain Text1Parse Documents2 3Create Chunks4 5Generate MetadataShow more lines
+
+Embedding Worker
+Plain Text1Generate Embeddings2 3Push to Search IndexShow more lines
+
+Integration Worker
+Plain Text1Sync ServiceNow2 3Sync Jira4 5Sync CMDBShow more lines
+
+Analytics Worker
+Plain Text1MTTR Calculations2 3Trend Detection4 5Usage MetricsShow more lines
+
+L. Azure OpenAI Container
+Responsibilities:
+Plain Text1Summarization2 3Incident Analysis4 5Change Risk Analysis6 7RCA Generation8 9ChatShow more lines
+Important:
+Plain Text1No direct access2to enterprise dataShow more lines
+Access only through:
+Plain Text1AI OrchestratorShow more lines
+This follows the secure multitenant RAG model where the orchestrator fetches authorized grounding data before model invocation.
+
+M. Observability Container
+Production Requirement
+Not optional.
+Contains:
+Plain Text1OpenTelemetry2 3Application Insights4 5Azure Monitor6 7Grafana8 9Microsoft SentinelShow more lines
+Enterprise AI guidance emphasizes observability, auditability, monitoring, governance, and production controls as key differentiators from prototypes.
+
+4. Container Communication Matrix
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SourceDestinationProtocolReact UIAPI GatewayHTTPSAPI GatewayCore APIHTTPSCore APIPostgreSQLSQLCore APIRedisTCPCore APIService BusAMQPCore APIAI OrchestratorHTTPS/gRPCAI OrchestratorRAG ServicegRPCRAG ServiceAI SearchRESTAI OrchestratorAzure OpenAIHTTPSWorkersService BusAMQPWorkersPostgreSQLSQLWorkersAI SearchRESTAll ContainersOpenTelemetryOTLP
+
+CTO Review
+At Level 2, Infrastructure Copilot consists of 11 major containers:
+Plain Text11. React Web App2 32. API Gateway4 53. Authentication Service6 74. Core Application API8 95. AI Orchestrator10 116. RAG Service12 137. PostgreSQL14 158. Azure AI Search16 179. Redis18 1910. Azure Service Bus20 2111. Worker Services22 2312. Azure OpenAI24 2513. Observability PlatformShow more lines
+This architecture optimizes for:
+
+Enterprise Security
+Multi-Tenant Isolation
+Low Cost
+RAG-first Intelligence
+Cloud Native Deployment
+Future Multi-Agent Expansion
+Production Operations
